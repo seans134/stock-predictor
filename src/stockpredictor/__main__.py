@@ -456,6 +456,213 @@ def cmd_stage1(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    import numpy as np
+    import pandas as pd
+
+    from stockpredictor.data.asof import AsOfData
+    from stockpredictor.data.store import BarStore
+    from stockpredictor.execution.costs import CostModel
+    from stockpredictor.execution.decisions import DecisionConfig, decide
+    from stockpredictor.execution.simulator import simulate, summarize
+    from stockpredictor.labeling.labeler import LabelConfig, classify_sessions, qualify_windows
+    from stockpredictor.labeling.tod import TimeOfDayStats
+    from stockpredictor.labeling.windows import LABEL_AS_OF_DELAY, session_windows
+    from stockpredictor.sessions import ET, default_calendar
+    from stockpredictor.stage1.calibration import DirichletCalibrator
+    from stockpredictor.stage1.features import build_stage1_features
+    from stockpredictor.stage1.model import (
+        CLASS_ORDER,
+        Stage1Classifier,
+        Stage1ModelConfig,
+        proba_frame,
+    )
+    from stockpredictor.stage2.features import TARGET_COLUMN, build_features
+    from stockpredictor.stage2.quantile import QuantileModelConfig, Stage2QuantileModel
+    from stockpredictor.validation.folds import WalkForwardConfig, generate_folds
+    from stockpredictor.validation.harness import run_walkforward
+
+    start = dt.date.fromisoformat(args.start)
+    end = dt.date.fromisoformat(args.end)
+    wf_config = WalkForwardConfig(
+        train_sessions=args.train,
+        test_sessions=args.test,
+        step_sessions=args.step,
+        calibrate_sessions=args.calibrate,
+        embargo_sessions=args.embargo,
+        holdout_sessions=args.holdout,
+    )
+    calendar = default_calendar()
+    sessions = calendar.sessions_between(start, end)
+    session_set = set(sessions)
+    folds = generate_folds(sessions, wf_config)
+    if not folds:
+        print("No folds fit in the requested range.", file=sys.stderr)
+        return 1
+    print(f"{len(folds)} folds over {len(sessions)} sessions ({args.holdout} held out)")
+
+    store = BarStore(args.db)
+    try:
+        tickers = (
+            [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+            if args.tickers
+            else store.tickers()
+        )
+        data = AsOfData(store)
+        range_close = pd.Timestamp(calendar.session_close(sessions[-1]))
+        as_of = range_close + LABEL_AS_OF_DELAY
+        range_open = pd.Timestamp(calendar.session_open(sessions[0])) - pd.Timedelta("6h")
+        print(f"Loading extended-hours bars for {len(tickers)} tickers...")
+        bars_by_ticker = {
+            t: data.get_bars(t, as_of=as_of, lookback=as_of - range_open) for t in tickers
+        }
+    finally:
+        store.close()
+
+    opens = {d: pd.Timestamp(calendar.session_open(d)) for d in sessions}
+    closes = {d: pd.Timestamp(calendar.session_close(d)) for d in sessions}
+
+    def rth_only(bars: pd.DataFrame) -> pd.DataFrame:
+        if bars.empty:
+            return bars
+        day = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        ts = pd.Series(bars.index.tz_convert(ET), index=bars.index)
+        mask = day.isin(session_set) & (ts >= day.map(opens)) & (ts < day.map(closes))
+        return bars.loc[mask.to_numpy()]
+
+    rth_by_ticker = {t: rth_only(b) for t, b in bars_by_ticker.items()}
+
+    print("Building Stage 1 pre-market features...")
+    s1_features = build_stage1_features(bars_by_ticker, calendar)
+    print("Building Stage 2 intraday features...")
+    s2_features = build_features(rth_by_ticker, calendar)
+    print("Building 15-min windows for labels...")
+    window_frames = []
+    for ticker, bars in rth_by_ticker.items():
+        if bars.empty:
+            continue
+        et_dates = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        for day, day_bars in bars.groupby(et_dates):
+            window_frames.append(session_windows(day_bars, ticker, day, calendar))
+    windows = pd.concat(window_frames, ignore_index=True)
+
+    label_config = LabelConfig()
+    s1_config = Stage1ModelConfig()
+    s2_config = QuantileModelConfig()
+    costs = CostModel()
+    decision_config = DecisionConfig()
+    class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
+    p_cols = [f"p_{c}" for c in CLASS_ORDER]
+
+    def label_rows(day_set, stats):
+        segment = windows[windows["date"].isin(day_set)]
+        labels = classify_sessions(
+            qualify_windows(stats.transform(segment), label_config), calendar, label_config
+        )
+        return s1_features.merge(labels[["ticker", "date", "label"]], on=["ticker", "date"])
+
+    def run_fold(fold):
+        train_days = set(fold.train_days)
+        test_days = set(fold.test_days)
+
+        # Stage 1: train, calibrate, score test-day pre-market snapshots.
+        stats = TimeOfDayStats().fit(windows[windows["date"].isin(train_days)])
+        s1_model = Stage1Classifier(s1_config).fit(label_rows(train_days, stats))
+        calib_rows = label_rows(set(fold.calibrate_days), stats)
+        calibrator = DirichletCalibrator().fit(
+            s1_model.predict_proba(calib_rows)[p_cols].to_numpy(),
+            calib_rows["label"].map(class_index).to_numpy(),
+        )
+        test_snapshots = s1_features[s1_features["date"].isin(test_days)]
+        scores = proba_frame(
+            calibrator.transform(
+                s1_model.predict_proba(test_snapshots)[p_cols].to_numpy()
+            ),
+            test_snapshots.index,
+        )
+        snap = test_snapshots[["ticker", "date"]].copy()
+        snap["score"] = scores["opportunity_score"]
+
+        # Candidate list per day: score floor plus max count.
+        candidates: set[tuple[str, dt.date]] = set()
+        for day, day_rows in snap.groupby("date"):
+            qualified = day_rows[day_rows["score"] >= args.min_score]
+            top = qualified.nlargest(args.max_candidates, "score")
+            candidates.update(zip(top["ticker"], top["date"]))
+
+        # Stage 2 on candidates only.
+        s2_train = s2_features[s2_features["date"].isin(train_days)]
+        s2_model = Stage2QuantileModel(s2_config).fit(s2_train)
+        pair_index = pd.MultiIndex.from_frame(s2_features[["ticker", "date"]])
+        s2_test = s2_features.loc[pair_index.isin(candidates)]
+
+        if s2_test.empty:
+            metrics = summarize(pd.DataFrame(), 0, len(test_days))
+            metrics["n_candidates"] = 0
+            metrics["candidate_days"] = 0
+            return metrics
+
+        preds = s2_model.predict(s2_test)
+        sim_frame = s2_test.copy()
+        sim_frame["decision"] = decide(s2_test, preds, costs, decision_config)
+        trades = simulate(sim_frame, costs)
+        metrics = summarize(trades, len(s2_test), len(test_days))
+        metrics["n_candidates"] = len(candidates)
+        metrics["candidate_days"] = int(snap[snap["score"] >= args.min_score]["date"].nunique())
+        print(
+            f"  fold {fold.fold_id}: {metrics['n_candidates']} candidates, "
+            f"{metrics['n_trades']} trades"
+        )
+        return metrics
+
+    record = run_walkforward(
+        folds,
+        run_fold,
+        experiment_name=args.name,
+        config_record={
+            "walkforward": wf_config,
+            "label": label_config,
+            "stage1": s1_config,
+            "stage2": s2_config,
+            "costs": costs,
+            "decisions": decision_config,
+            "min_score": args.min_score,
+            "max_candidates": args.max_candidates,
+            "tickers": tickers,
+            "range": [str(start), str(end)],
+        },
+    )
+
+    print(f"\n{'fold':>4} {'test period':^23} {'cands':>5} {'trades':>6} {'t/day':>5} "
+          f"{'hit':>6} {'gross':>7} {'net':>7} {'total':>7}")
+    for fr in record["folds"]:
+        m = fr["metrics"]
+        hit = f"{m['hit_rate']:.1%}" if m["n_trades"] else "  -"
+        gross = f"{m['avg_gross_bps']:.1f}bp" if m["n_trades"] else "  -"
+        net = f"{m['avg_net_bps']:.1f}bp" if m["n_trades"] else "  -"
+        print(
+            f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]} "
+            f"{m['n_candidates']:>5} {m['n_trades']:>6} {m['trades_per_day']:>5.1f} "
+            f"{hit:>6} {gross:>7} {net:>7} {m['total_net_return']:>7.4f}"
+        )
+    import statistics
+
+    print("\nAcross folds:")
+    totals = [fr["metrics"]["total_net_return"] for fr in record["folds"]]
+    n_trades = sum(fr["metrics"]["n_trades"] for fr in record["folds"])
+    all_net = [
+        fr["metrics"]["avg_net_bps"]
+        for fr in record["folds"]
+        if fr["metrics"]["n_trades"] > 0
+    ]
+    print(f"  total trades: {n_trades}")
+    print(f"  sum of net returns: {sum(totals):.4f} ({sum(totals) * 1e4:.0f} bps)")
+    if all_net:
+        print(f"  avg net per trade: {statistics.mean(all_net):.2f} bps")
+    print(f"\nExperiment record: {record['path']}")
+    return 0
+
+
 def cmd_coverage(args: argparse.Namespace) -> int:
     from stockpredictor.data.store import BarStore
 
@@ -537,6 +744,22 @@ def main() -> int:
     p_s1.add_argument("--name", default="stage1-classifier-baseline")
     p_s1.add_argument("--db", default=str(DEFAULT_DB))
     p_s1.set_defaults(func=cmd_stage1)
+
+    p_bt = sub.add_parser("backtest", help="after-cost backtest: Stage 1 -> Stage 2 -> decisions")
+    p_bt.add_argument("--start", required=True)
+    p_bt.add_argument("--end", required=True)
+    p_bt.add_argument("--train", type=int, default=250)
+    p_bt.add_argument("--test", type=int, default=21)
+    p_bt.add_argument("--step", type=int, default=21)
+    p_bt.add_argument("--calibrate", type=int, default=40)
+    p_bt.add_argument("--embargo", type=int, default=1)
+    p_bt.add_argument("--holdout", type=int, default=42)
+    p_bt.add_argument("--max-candidates", type=int, default=5)
+    p_bt.add_argument("--min-score", type=float, default=0.5)
+    p_bt.add_argument("--tickers", default=None)
+    p_bt.add_argument("--name", default="after-cost-backtest")
+    p_bt.add_argument("--db", default=str(DEFAULT_DB))
+    p_bt.set_defaults(func=cmd_backtest)
 
     p_cov = sub.add_parser("coverage", help="show stored date range per ticker")
     p_cov.add_argument("--db", default=str(DEFAULT_DB))
