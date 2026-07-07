@@ -60,13 +60,20 @@ class Stage1Classifier:
 
     def predict_proba(self, frame: pd.DataFrame) -> pd.DataFrame:
         proba = self._model.predict_proba(frame[STAGE1_FEATURES])
-        out = pd.DataFrame(
-            proba, columns=[f"p_{c}" for c in CLASS_ORDER], index=frame.index
-        )
-        out["opportunity_score"] = sum(
-            OPPORTUNITY_WEIGHTS[c] * out[f"p_{c}"] for c in OPPORTUNITY_WEIGHTS
-        )
-        return out
+        return proba_frame(proba, frame.index)
+
+
+def proba_frame(proba, index) -> pd.DataFrame:
+    """Wrap a (n, 3) probability array as the standard Stage 1 output:
+    per-class columns plus the opportunity score. Raw and calibrated
+    probabilities flow through this same path."""
+    out = pd.DataFrame(
+        np.asarray(proba), columns=[f"p_{c}" for c in CLASS_ORDER], index=index
+    )
+    out["opportunity_score"] = sum(
+        OPPORTUNITY_WEIGHTS[c] * out[f"p_{c}"] for c in OPPORTUNITY_WEIGHTS
+    )
+    return out
 
 
 def ranking_metrics(
@@ -93,10 +100,15 @@ def ranking_metrics(
 
 
 def evaluate_stage1(
-    test: pd.DataFrame, proba: pd.DataFrame, k: int = 5, seed: int = 0
+    test: pd.DataFrame,
+    proba: pd.DataFrame,
+    k: int = 5,
+    seed: int = 0,
+    prior: np.ndarray | None = None,
 ) -> dict:
     """Filter/ranker metrics plus the plan's baseline comparisons, all on
-    identical rows."""
+    identical rows. `prior` (train-segment class frequencies) adds the
+    predict-the-prior log-loss reference the model must beat."""
     rows = test.dropna(subset=["label"]).copy()
     proba = proba.loc[rows.index]
     y_true = rows["label"].map(_CLASS_INDEX).to_numpy()
@@ -111,6 +123,9 @@ def evaluate_stage1(
         "brier": float(np.mean(np.sum((p - one_hot) ** 2, axis=1))),
         "accuracy": float(np.mean(predicted == y_true)),
     }
+    if prior is not None:
+        prior = np.clip(np.asarray(prior, dtype=float), 1e-9, 1.0)
+        metrics["log_loss_prior"] = float(-np.mean(np.log(prior[y_true])))
     for i, label in enumerate(CLASS_ORDER):
         tp = np.sum((predicted == i) & (y_true == i))
         metrics[f"precision_{label}"] = float(tp / max(np.sum(predicted == i), 1))

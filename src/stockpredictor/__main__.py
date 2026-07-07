@@ -306,8 +306,15 @@ def cmd_stage1(args: argparse.Namespace) -> int:
     from stockpredictor.labeling.tod import TimeOfDayStats
     from stockpredictor.labeling.windows import LABEL_AS_OF_DELAY, session_windows
     from stockpredictor.sessions import ET, default_calendar
+    from stockpredictor.stage1.calibration import DirichletCalibrator
     from stockpredictor.stage1.features import build_stage1_features
-    from stockpredictor.stage1.model import Stage1Classifier, Stage1ModelConfig, evaluate_stage1
+    from stockpredictor.stage1.model import (
+        CLASS_ORDER,
+        Stage1Classifier,
+        Stage1ModelConfig,
+        evaluate_stage1,
+        proba_frame,
+    )
     from stockpredictor.validation.folds import WalkForwardConfig, generate_folds
     from stockpredictor.validation.harness import run_walkforward
 
@@ -317,6 +324,7 @@ def cmd_stage1(args: argparse.Namespace) -> int:
         train_sessions=args.train,
         test_sessions=args.test,
         step_sessions=args.step,
+        calibrate_sessions=args.calibrate,
         embargo_sessions=args.embargo,
         holdout_sessions=args.holdout,
     )
@@ -365,25 +373,45 @@ def cmd_stage1(args: argparse.Namespace) -> int:
     label_config = LabelConfig()
     model_config = Stage1ModelConfig()
 
+    import numpy as np
+
+    class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
+
+    def label_rows(day_set, stats):
+        segment = windows[windows["date"].isin(day_set)]
+        labels = classify_sessions(
+            qualify_windows(stats.transform(segment), label_config), calendar, label_config
+        )
+        return features.merge(labels[["ticker", "date", "label"]], on=["ticker", "date"])
+
     def run_fold(fold):
-        train_days, test_days = set(fold.train_days), set(fold.test_days)
-        train_w = windows[windows["date"].isin(train_days)]
-        test_w = windows[windows["date"].isin(test_days)]
         # Label thresholds and time-of-day stats come from the train
-        # segment only; both train and test labels are computed with them.
-        stats = TimeOfDayStats().fit(train_w)
-        train_labels = classify_sessions(
-            qualify_windows(stats.transform(train_w), label_config), calendar, label_config
-        )
-        test_labels = classify_sessions(
-            qualify_windows(stats.transform(test_w), label_config), calendar, label_config
-        )
-        train_rows = features.merge(train_labels[["ticker", "date", "label"]], on=["ticker", "date"])
-        test_rows = features.merge(test_labels[["ticker", "date", "label"]], on=["ticker", "date"])
+        # segment only; train, calibrate, and test labels all use them.
+        stats = TimeOfDayStats().fit(windows[windows["date"].isin(set(fold.train_days))])
+        train_rows = label_rows(set(fold.train_days), stats)
+        calib_rows = label_rows(set(fold.calibrate_days), stats)
+        test_rows = label_rows(set(fold.test_days), stats)
 
         model = Stage1Classifier(model_config).fit(train_rows)
-        proba = model.predict_proba(test_rows)
-        metrics = evaluate_stage1(test_rows, proba, k=args.top_k)
+
+        # Calibrator fits on predictions for data the classifier never saw.
+        p_cols = [f"p_{c}" for c in CLASS_ORDER]
+        calib_proba = model.predict_proba(calib_rows)[p_cols].to_numpy()
+        calib_y = calib_rows["label"].map(class_index).to_numpy()
+        calibrator = DirichletCalibrator().fit(calib_proba, calib_y)
+
+        raw_proba = model.predict_proba(test_rows)
+        cal_proba = proba_frame(
+            calibrator.transform(raw_proba[p_cols].to_numpy()), test_rows.index
+        )
+
+        prior = train_rows["label"].map(class_index).value_counts(normalize=True)
+        prior = prior.reindex(range(len(CLASS_ORDER)), fill_value=0.0).to_numpy()
+
+        metrics = evaluate_stage1(test_rows, cal_proba, k=args.top_k, prior=prior)
+        raw_metrics = evaluate_stage1(test_rows, raw_proba, k=args.top_k)
+        metrics["log_loss_raw"] = raw_metrics["log_loss"]
+        metrics["brier_raw"] = raw_metrics["brier"]
         print(f"  fold {fold.fold_id}: done ({metrics['n_rows']} test rows)")
         return metrics
 
@@ -402,20 +430,21 @@ def cmd_stage1(args: argparse.Namespace) -> int:
     )
 
     k = args.top_k
-    print(f"\n{'fold':>4} {'test period':^23} {'logloss':>7} {'acc':>6} "
+    print(f"\n{'fold':>4} {'test period':^23} {'ll_raw':>7} {'ll_cal':>7} {'ll_prior':>8} "
           f"{'p@' + str(k) + ' model':>9} {'gap':>6} {'pmvol':>6} {'rand':>6}")
     for fr in record["folds"]:
         m = fr["metrics"]
         print(
             f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]} "
-            f"{m['log_loss']:>7.4f} {m['accuracy']:>6.1%} "
+            f"{m['log_loss_raw']:>7.4f} {m['log_loss']:>7.4f} {m['log_loss_prior']:>8.4f} "
             f"{m[f'p_at_{k}_model']:>9.1%} {m[f'p_at_{k}_gap']:>6.1%} "
             f"{m[f'p_at_{k}_pm_vol']:>6.1%} {m[f'p_at_{k}_random']:>6.1%}"
         )
     import statistics
 
     print("\nAcross folds (mean +/- stdev):")
-    keys = ["log_loss", "brier", "accuracy", f"p_at_{k}_model", f"p_at_{k}_gap",
+    keys = ["log_loss_raw", "log_loss", "log_loss_prior", "brier_raw", "brier",
+            "accuracy", f"p_at_{k}_model", f"p_at_{k}_gap",
             f"p_at_{k}_pm_vol", f"p_at_{k}_random", f"capture_at_{k}_model",
             f"capture_at_{k}_gap", "recall_sustained", "precision_sustained"]
     for key in keys:
@@ -500,6 +529,7 @@ def main() -> int:
     p_s1.add_argument("--train", type=int, default=250)
     p_s1.add_argument("--test", type=int, default=21)
     p_s1.add_argument("--step", type=int, default=21)
+    p_s1.add_argument("--calibrate", type=int, default=40)
     p_s1.add_argument("--embargo", type=int, default=1)
     p_s1.add_argument("--holdout", type=int, default=42)
     p_s1.add_argument("--top-k", type=int, default=5)
