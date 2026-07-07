@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stockpredictor"
+version = "0.1.0"
+description = "Two-stage intraday stock opportunity scanner and return-distribution forecaster"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "pandas-market-calendars>=4.3",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "lightgbm>=4.3",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
