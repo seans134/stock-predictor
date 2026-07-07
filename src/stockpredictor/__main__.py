@@ -297,6 +297,136 @@ def cmd_stage2(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stage1(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from stockpredictor.data.asof import AsOfData
+    from stockpredictor.data.store import BarStore
+    from stockpredictor.labeling.labeler import LabelConfig, classify_sessions, qualify_windows
+    from stockpredictor.labeling.tod import TimeOfDayStats
+    from stockpredictor.labeling.windows import LABEL_AS_OF_DELAY, session_windows
+    from stockpredictor.sessions import ET, default_calendar
+    from stockpredictor.stage1.features import build_stage1_features
+    from stockpredictor.stage1.model import Stage1Classifier, Stage1ModelConfig, evaluate_stage1
+    from stockpredictor.validation.folds import WalkForwardConfig, generate_folds
+    from stockpredictor.validation.harness import run_walkforward
+
+    start = dt.date.fromisoformat(args.start)
+    end = dt.date.fromisoformat(args.end)
+    wf_config = WalkForwardConfig(
+        train_sessions=args.train,
+        test_sessions=args.test,
+        step_sessions=args.step,
+        embargo_sessions=args.embargo,
+        holdout_sessions=args.holdout,
+    )
+    calendar = default_calendar()
+    sessions = calendar.sessions_between(start, end)
+    session_set = set(sessions)
+    folds = generate_folds(sessions, wf_config)
+    if not folds:
+        print("No folds fit in the requested range.", file=sys.stderr)
+        return 1
+    print(f"{len(folds)} folds over {len(sessions)} sessions ({args.holdout} held out)")
+
+    store = BarStore(args.db)
+    try:
+        tickers = (
+            [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+            if args.tickers
+            else store.tickers()
+        )
+        data = AsOfData(store)
+        range_close = pd.Timestamp(calendar.session_close(sessions[-1]))
+        as_of = range_close + LABEL_AS_OF_DELAY
+        range_open = pd.Timestamp(calendar.session_open(sessions[0])) - pd.Timedelta("6h")
+        print(f"Loading extended-hours bars for {len(tickers)} tickers...")
+        bars_by_ticker = {
+            t: data.get_bars(t, as_of=as_of, lookback=as_of - range_open) for t in tickers
+        }
+    finally:
+        store.close()
+
+    print("Building pre-market features...")
+    features = build_stage1_features(bars_by_ticker, calendar)
+    print(f"  {len(features)} ticker-session rows")
+
+    print("Building 15-min windows for labels...")
+    window_frames = []
+    for ticker, bars in bars_by_ticker.items():
+        if bars.empty:
+            continue
+        et_dates = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        for day, day_bars in bars.groupby(et_dates):
+            if day in session_set:
+                window_frames.append(session_windows(day_bars, ticker, day, calendar))
+    windows = pd.concat(window_frames, ignore_index=True)
+
+    label_config = LabelConfig()
+    model_config = Stage1ModelConfig()
+
+    def run_fold(fold):
+        train_days, test_days = set(fold.train_days), set(fold.test_days)
+        train_w = windows[windows["date"].isin(train_days)]
+        test_w = windows[windows["date"].isin(test_days)]
+        # Label thresholds and time-of-day stats come from the train
+        # segment only; both train and test labels are computed with them.
+        stats = TimeOfDayStats().fit(train_w)
+        train_labels = classify_sessions(
+            qualify_windows(stats.transform(train_w), label_config), calendar, label_config
+        )
+        test_labels = classify_sessions(
+            qualify_windows(stats.transform(test_w), label_config), calendar, label_config
+        )
+        train_rows = features.merge(train_labels[["ticker", "date", "label"]], on=["ticker", "date"])
+        test_rows = features.merge(test_labels[["ticker", "date", "label"]], on=["ticker", "date"])
+
+        model = Stage1Classifier(model_config).fit(train_rows)
+        proba = model.predict_proba(test_rows)
+        metrics = evaluate_stage1(test_rows, proba, k=args.top_k)
+        print(f"  fold {fold.fold_id}: done ({metrics['n_rows']} test rows)")
+        return metrics
+
+    record = run_walkforward(
+        folds,
+        run_fold,
+        experiment_name=args.name,
+        config_record={
+            "walkforward": wf_config,
+            "label": label_config,
+            "model": model_config,
+            "tickers": tickers,
+            "top_k": args.top_k,
+            "range": [str(start), str(end)],
+        },
+    )
+
+    k = args.top_k
+    print(f"\n{'fold':>4} {'test period':^23} {'logloss':>7} {'acc':>6} "
+          f"{'p@' + str(k) + ' model':>9} {'gap':>6} {'pmvol':>6} {'rand':>6}")
+    for fr in record["folds"]:
+        m = fr["metrics"]
+        print(
+            f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]} "
+            f"{m['log_loss']:>7.4f} {m['accuracy']:>6.1%} "
+            f"{m[f'p_at_{k}_model']:>9.1%} {m[f'p_at_{k}_gap']:>6.1%} "
+            f"{m[f'p_at_{k}_pm_vol']:>6.1%} {m[f'p_at_{k}_random']:>6.1%}"
+        )
+    import statistics
+
+    print("\nAcross folds (mean +/- stdev):")
+    keys = ["log_loss", "brier", "accuracy", f"p_at_{k}_model", f"p_at_{k}_gap",
+            f"p_at_{k}_pm_vol", f"p_at_{k}_random", f"capture_at_{k}_model",
+            f"capture_at_{k}_gap", "recall_sustained", "precision_sustained"]
+    for key in keys:
+        values = [fr["metrics"][key] for fr in record["folds"]]
+        mean = statistics.mean(values)
+        sd = statistics.stdev(values) if len(values) > 1 else 0.0
+        print(f"  {key:>22}: {mean:.4f} +/- {sd:.4f}")
+    print(f"\nExperiment record: {record['path']}")
+    return 0
+
+
 def cmd_coverage(args: argparse.Namespace) -> int:
     from stockpredictor.data.store import BarStore
 
@@ -363,6 +493,20 @@ def main() -> int:
     p_s2.add_argument("--name", default="stage2-quantile-baseline")
     p_s2.add_argument("--db", default=str(DEFAULT_DB))
     p_s2.set_defaults(func=cmd_stage2)
+
+    p_s1 = sub.add_parser("stage1", help="walk-forward Stage 1 pre-market classifier")
+    p_s1.add_argument("--start", required=True)
+    p_s1.add_argument("--end", required=True)
+    p_s1.add_argument("--train", type=int, default=250)
+    p_s1.add_argument("--test", type=int, default=21)
+    p_s1.add_argument("--step", type=int, default=21)
+    p_s1.add_argument("--embargo", type=int, default=1)
+    p_s1.add_argument("--holdout", type=int, default=42)
+    p_s1.add_argument("--top-k", type=int, default=5)
+    p_s1.add_argument("--tickers", default=None)
+    p_s1.add_argument("--name", default="stage1-classifier-baseline")
+    p_s1.add_argument("--db", default=str(DEFAULT_DB))
+    p_s1.set_defaults(func=cmd_stage1)
 
     p_cov = sub.add_parser("coverage", help="show stored date range per ticker")
     p_cov.add_argument("--db", default=str(DEFAULT_DB))
