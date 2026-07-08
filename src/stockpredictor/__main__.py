@@ -663,6 +663,232 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ablation(args: argparse.Namespace) -> int:
+    """The plan's downstream-value test: the same Stage 2 model evaluated
+    on ALL test ticker-days vs ONLY Stage 1 candidates. If Stage 2 is no
+    better on candidates, Stage 1 adds compute savings but no signal."""
+    import numpy as np
+    import pandas as pd
+
+    from stockpredictor.data.asof import AsOfData
+    from stockpredictor.data.store import BarStore
+    from stockpredictor.execution.costs import CostModel
+    from stockpredictor.execution.decisions import DecisionConfig, decide
+    from stockpredictor.execution.simulator import simulate, summarize
+    from stockpredictor.labeling.labeler import LabelConfig, classify_sessions, qualify_windows
+    from stockpredictor.labeling.tod import TimeOfDayStats
+    from stockpredictor.labeling.windows import LABEL_AS_OF_DELAY, session_windows
+    from stockpredictor.sessions import ET, default_calendar
+    from stockpredictor.stage1.calibration import DirichletCalibrator
+    from stockpredictor.stage1.features import build_stage1_features
+    from stockpredictor.stage1.model import (
+        CLASS_ORDER,
+        Stage1Classifier,
+        Stage1ModelConfig,
+        proba_frame,
+    )
+    from stockpredictor.stage2.features import build_features
+    from stockpredictor.stage2.quantile import (
+        QuantileModelConfig,
+        Stage2QuantileModel,
+        evaluate,
+    )
+    from stockpredictor.validation.folds import WalkForwardConfig, generate_folds
+    from stockpredictor.validation.harness import run_walkforward
+
+    start = dt.date.fromisoformat(args.start)
+    end = dt.date.fromisoformat(args.end)
+    wf_config = WalkForwardConfig(
+        train_sessions=args.train,
+        test_sessions=args.test,
+        step_sessions=args.step,
+        calibrate_sessions=args.calibrate,
+        embargo_sessions=args.embargo,
+        holdout_sessions=args.holdout,
+    )
+    calendar = default_calendar()
+    sessions = calendar.sessions_between(start, end)
+    session_set = set(sessions)
+    folds = generate_folds(sessions, wf_config)
+    if not folds:
+        print("No folds fit in the requested range.", file=sys.stderr)
+        return 1
+    print(f"{len(folds)} folds over {len(sessions)} sessions ({args.holdout} held out)")
+
+    store = BarStore(args.db)
+    try:
+        tickers = (
+            [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+            if args.tickers
+            else store.tickers()
+        )
+        data = AsOfData(store)
+        range_close = pd.Timestamp(calendar.session_close(sessions[-1]))
+        as_of = range_close + LABEL_AS_OF_DELAY
+        range_open = pd.Timestamp(calendar.session_open(sessions[0])) - pd.Timedelta("6h")
+        print(f"Loading extended-hours bars for {len(tickers)} tickers...")
+        bars_by_ticker = {
+            t: data.get_bars(t, as_of=as_of, lookback=as_of - range_open) for t in tickers
+        }
+    finally:
+        store.close()
+
+    opens = {d: pd.Timestamp(calendar.session_open(d)) for d in sessions}
+    closes = {d: pd.Timestamp(calendar.session_close(d)) for d in sessions}
+
+    def rth_only(bars: pd.DataFrame) -> pd.DataFrame:
+        if bars.empty:
+            return bars
+        day = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        ts = pd.Series(bars.index.tz_convert(ET), index=bars.index)
+        mask = day.isin(session_set) & (ts >= day.map(opens)) & (ts < day.map(closes))
+        return bars.loc[mask.to_numpy()]
+
+    rth_by_ticker = {t: rth_only(b) for t, b in bars_by_ticker.items()}
+
+    print("Building Stage 1 pre-market features...")
+    s1_features = build_stage1_features(bars_by_ticker, calendar)
+    print("Building Stage 2 intraday features...")
+    s2_features = build_features(rth_by_ticker, calendar)
+    print("Building 15-min windows for labels...")
+    window_frames = []
+    for ticker, bars in rth_by_ticker.items():
+        if bars.empty:
+            continue
+        et_dates = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        for day, day_bars in bars.groupby(et_dates):
+            window_frames.append(session_windows(day_bars, ticker, day, calendar))
+    windows = pd.concat(window_frames, ignore_index=True)
+
+    label_config = LabelConfig()
+    s1_config = Stage1ModelConfig()
+    s2_config = QuantileModelConfig()
+    costs = CostModel()
+    decision_config = DecisionConfig()
+    class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
+    p_cols = [f"p_{c}" for c in CLASS_ORDER]
+
+    def label_rows(day_set, stats):
+        segment = windows[windows["date"].isin(day_set)]
+        labels = classify_sessions(
+            qualify_windows(stats.transform(segment), label_config), calendar, label_config
+        )
+        return s1_features.merge(labels[["ticker", "date", "label"]], on=["ticker", "date"])
+
+    def slice_metrics(rows, model, prefix):
+        """Forecast + after-cost trading metrics for one evaluation slice."""
+        if rows.empty:
+            return {f"{prefix}_n_rows": 0}
+        preds = model.predict(rows)
+        forecast = evaluate(rows, preds)
+        sim_frame = rows.copy()
+        sim_frame["decision"] = decide(rows, preds, costs, decision_config)
+        trades = simulate(sim_frame, costs)
+        trading = summarize(trades, len(rows), rows["date"].nunique())
+        return {
+            f"{prefix}_n_rows": forecast["n_rows"],
+            f"{prefix}_direction_accuracy": forecast["direction_accuracy"],
+            f"{prefix}_pinball_q50_vs_baseline": forecast["pinball_q50_vs_baseline"],
+            f"{prefix}_coverage_80": forecast["coverage_80"],
+            f"{prefix}_n_trades": trading["n_trades"],
+            f"{prefix}_avg_net_bps": trading["avg_net_bps"],
+            f"{prefix}_avg_gross_bps": trading["avg_gross_bps"],
+            f"{prefix}_hit_rate": trading["hit_rate"],
+        }
+
+    def run_fold(fold):
+        train_days = set(fold.train_days)
+        test_days = set(fold.test_days)
+
+        stats = TimeOfDayStats().fit(windows[windows["date"].isin(train_days)])
+        s1_model = Stage1Classifier(s1_config).fit(label_rows(train_days, stats))
+        calib_rows = label_rows(set(fold.calibrate_days), stats)
+        calibrator = DirichletCalibrator().fit(
+            s1_model.predict_proba(calib_rows)[p_cols].to_numpy(),
+            calib_rows["label"].map(class_index).to_numpy(),
+        )
+        test_snapshots = s1_features[s1_features["date"].isin(test_days)]
+        scores = proba_frame(
+            calibrator.transform(
+                s1_model.predict_proba(test_snapshots)[p_cols].to_numpy()
+            ),
+            test_snapshots.index,
+        )
+        snap = test_snapshots[["ticker", "date"]].copy()
+        snap["score"] = scores["opportunity_score"]
+        candidates: set[tuple[str, dt.date]] = set()
+        for day, day_rows in snap.groupby("date"):
+            qualified = day_rows[day_rows["score"] >= args.min_score]
+            top = qualified.nlargest(args.max_candidates, "score")
+            candidates.update(zip(top["ticker"], top["date"]))
+
+        s2_model = Stage2QuantileModel(s2_config).fit(
+            s2_features[s2_features["date"].isin(train_days)]
+        )
+        test_all = s2_features[s2_features["date"].isin(test_days)]
+        pair_index = pd.MultiIndex.from_frame(test_all[["ticker", "date"]])
+        test_cand = test_all.loc[pair_index.isin(candidates)]
+
+        metrics = {"n_candidates": len(candidates)}
+        metrics.update(slice_metrics(test_all, s2_model, "all"))
+        metrics.update(slice_metrics(test_cand, s2_model, "cand"))
+        print(
+            f"  fold {fold.fold_id}: {len(test_all)} universe rows, "
+            f"{len(test_cand)} candidate rows"
+        )
+        return metrics
+
+    record = run_walkforward(
+        folds,
+        run_fold,
+        experiment_name=args.name,
+        config_record={
+            "walkforward": wf_config,
+            "label": label_config,
+            "stage1": s1_config,
+            "stage2": s2_config,
+            "costs": costs,
+            "decisions": decision_config,
+            "min_score": args.min_score,
+            "max_candidates": args.max_candidates,
+            "tickers": tickers,
+            "range": [str(start), str(end)],
+        },
+    )
+
+    print(f"\n{'fold':>4} {'test period':^23} {'dirAcc all':>10} {'cand':>6} "
+          f"{'net all':>8} {'cand':>8} {'trades all':>10} {'cand':>5}")
+    for fr in record["folds"]:
+        m = fr["metrics"]
+        if m.get("cand_n_rows", 0) == 0:
+            print(f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]}  (no candidates)")
+            continue
+        net_all = f"{m['all_avg_net_bps']:.1f}" if m["all_n_trades"] else "-"
+        net_cand = f"{m['cand_avg_net_bps']:.1f}" if m["cand_n_trades"] else "-"
+        print(
+            f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]} "
+            f"{m['all_direction_accuracy']:>10.1%} {m['cand_direction_accuracy']:>6.1%} "
+            f"{net_all:>8} {net_cand:>8} {m['all_n_trades']:>10} {m['cand_n_trades']:>5}"
+        )
+    import statistics
+
+    print("\nAcross folds (mean +/- stdev):")
+    for key in (
+        "all_direction_accuracy", "cand_direction_accuracy",
+        "all_pinball_q50_vs_baseline", "cand_pinball_q50_vs_baseline",
+        "all_coverage_80", "cand_coverage_80",
+    ):
+        values = [fr["metrics"][key] for fr in record["folds"] if key in fr["metrics"]]
+        if not values:
+            continue
+        clean = [v for v in values if v == v]  # drop NaN
+        mean = statistics.mean(clean)
+        sd = statistics.stdev(clean) if len(clean) > 1 else 0.0
+        print(f"  {key:>30}: {mean:.4f} +/- {sd:.4f}")
+    print(f"\nExperiment record: {record['path']}")
+    return 0
+
+
 def cmd_coverage(args: argparse.Namespace) -> int:
     from stockpredictor.data.store import BarStore
 
@@ -760,6 +986,22 @@ def main() -> int:
     p_bt.add_argument("--name", default="after-cost-backtest")
     p_bt.add_argument("--db", default=str(DEFAULT_DB))
     p_bt.set_defaults(func=cmd_backtest)
+
+    p_ab = sub.add_parser("ablation", help="Stage 2 on candidates vs full universe")
+    p_ab.add_argument("--start", required=True)
+    p_ab.add_argument("--end", required=True)
+    p_ab.add_argument("--train", type=int, default=250)
+    p_ab.add_argument("--test", type=int, default=21)
+    p_ab.add_argument("--step", type=int, default=21)
+    p_ab.add_argument("--calibrate", type=int, default=40)
+    p_ab.add_argument("--embargo", type=int, default=1)
+    p_ab.add_argument("--holdout", type=int, default=42)
+    p_ab.add_argument("--max-candidates", type=int, default=5)
+    p_ab.add_argument("--min-score", type=float, default=0.5)
+    p_ab.add_argument("--tickers", default=None)
+    p_ab.add_argument("--name", default="downstream-value-ablation")
+    p_ab.add_argument("--db", default=str(DEFAULT_DB))
+    p_ab.set_defaults(func=cmd_ablation)
 
     p_cov = sub.add_parser("coverage", help="show stored date range per ticker")
     p_cov.add_argument("--db", default=str(DEFAULT_DB))
