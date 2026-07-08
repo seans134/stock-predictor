@@ -23,11 +23,12 @@ import numpy as np
 import pandas as pd
 
 from stockpredictor.data.availability import BAR_INGEST_LATENCY, TIMEFRAME_DURATIONS
+from stockpredictor.news.features import STAGE1_NEWS_FEATURES, NewsFeatureBuilder
 from stockpredictor.sessions import DEFAULT_PREMARKET_CUTOFF, ET, SessionCalendar
 
 EPS = 1e-12
 
-STAGE1_FEATURES = [
+_PRICE_FEATURES = [
     "gap",              # log(pre-market last price / previous RTH close)
     "gap_norm",         # gap / trailing 20-day daily vol
     "pm_ret",           # pre-market return, first to last usable bar
@@ -44,6 +45,9 @@ STAGE1_FEATURES = [
     "spy_pm_ret",
     "rel_gap",          # gap minus SPY gap
 ]
+
+# News features are NaN when no news store is supplied (unknown, not zero).
+STAGE1_FEATURES = _PRICE_FEATURES + STAGE1_NEWS_FEATURES
 
 META_COLUMNS = ["ticker", "date"]
 PM_SESSION_START = dt.time(4, 0)
@@ -139,6 +143,7 @@ def build_stage1_features(
     calendar: SessionCalendar,
     cutoff: dt.time = DEFAULT_PREMARKET_CUTOFF,
     market_ticker: str = "SPY",
+    news: NewsFeatureBuilder | None = None,
 ) -> pd.DataFrame:
     """Pre-market snapshot rows for every ticker-session.
 
@@ -164,6 +169,18 @@ def build_stage1_features(
             daily["spy_gap"] = np.nan
             daily["spy_pm_ret"] = np.nan
         daily["rel_gap"] = daily["gap"] - daily["spy_gap"]
+
+        if news is not None:
+            cutoffs = pd.DatetimeIndex(
+                [dt.datetime.combine(d, cutoff, tzinfo=ET) for d in daily.index]
+            )
+            news_feats = news.stage1_features(ticker, cutoffs)
+            news_feats.index = daily.index
+            daily = daily.join(news_feats)
+        else:
+            for col in STAGE1_NEWS_FEATURES:
+                daily[col] = np.nan
+
         daily["ticker"] = ticker
         daily = daily.reset_index()
         frames.append(daily[META_COLUMNS + STAGE1_FEATURES])

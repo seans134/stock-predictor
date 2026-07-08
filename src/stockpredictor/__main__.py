@@ -746,10 +746,21 @@ def cmd_ablation(args: argparse.Namespace) -> int:
 
     rth_by_ticker = {t: rth_only(b) for t, b in bars_by_ticker.items()}
 
+    news_builder = None
+    if args.news_db and Path(args.news_db).exists():
+        from stockpredictor.data.news_store import NewsStore
+        from stockpredictor.news.features import NewsFeatureBuilder
+
+        print(f"Loading and clustering news from {args.news_db}...")
+        news_store = NewsStore(args.news_db)
+        news_builder = NewsFeatureBuilder(news_store)
+    else:
+        print("No news store found; running without news features.")
+
     print("Building Stage 1 pre-market features...")
-    s1_features = build_stage1_features(bars_by_ticker, calendar)
+    s1_features = build_stage1_features(bars_by_ticker, calendar, news=news_builder)
     print("Building Stage 2 intraday features...")
-    s2_features = build_features(rth_by_ticker, calendar)
+    s2_features = build_features(rth_by_ticker, calendar, news=news_builder)
     print("Building 15-min windows for labels...")
     window_frames = []
     for ticker, bars in rth_by_ticker.items():
@@ -852,6 +863,7 @@ def cmd_ablation(args: argparse.Namespace) -> int:
             "min_score": args.min_score,
             "max_candidates": args.max_candidates,
             "tickers": tickers,
+            "news": bool(news_builder),
             "range": [str(start), str(end)],
         },
     )
@@ -886,6 +898,31 @@ def cmd_ablation(args: argparse.Namespace) -> int:
         sd = statistics.stdev(clean) if len(clean) > 1 else 0.0
         print(f"  {key:>30}: {mean:.4f} +/- {sd:.4f}")
     print(f"\nExperiment record: {record['path']}")
+    return 0
+
+
+def cmd_ingest_news(args: argparse.Namespace) -> int:
+    from stockpredictor.data.news_store import NewsStore
+    from stockpredictor.ingest.polygon import PolygonClient
+    from stockpredictor.ingest.polygon_news import ingest_news
+
+    load_dotenv()
+    api_key = os.environ.get("POLYGON_API_KEY")
+    if not api_key:
+        print("Missing POLYGON_API_KEY (see .env.example).", file=sys.stderr)
+        return 1
+
+    start = dt.date.fromisoformat(args.start)
+    end = dt.date.fromisoformat(args.end)
+    print(f"Backfilling market news {start}..{end} (rate-limited, ~1000 articles/call)...")
+    store = NewsStore(args.db)
+    try:
+        inserted = ingest_news(store, PolygonClient(api_key), start, end)
+        n, lo, hi = store.coverage()
+    finally:
+        store.close()
+    print(f"Inserted {inserted} new articles into {args.db}")
+    print(f"Store now holds {n} articles, {lo} .. {hi}")
     return 0
 
 
@@ -998,10 +1035,17 @@ def main() -> int:
     p_ab.add_argument("--holdout", type=int, default=42)
     p_ab.add_argument("--max-candidates", type=int, default=5)
     p_ab.add_argument("--min-score", type=float, default=0.5)
+    p_ab.add_argument("--news-db", default=str(Path("data") / "news.sqlite"))
     p_ab.add_argument("--tickers", default=None)
     p_ab.add_argument("--name", default="downstream-value-ablation")
     p_ab.add_argument("--db", default=str(DEFAULT_DB))
     p_ab.set_defaults(func=cmd_ablation)
+
+    p_news = sub.add_parser("ingest-news", help="backfill market news from Polygon")
+    p_news.add_argument("--start", required=True, help="ISO date")
+    p_news.add_argument("--end", required=True, help="ISO date (exclusive)")
+    p_news.add_argument("--db", default=str(Path("data") / "news.sqlite"))
+    p_news.set_defaults(func=cmd_ingest_news)
 
     p_cov = sub.add_parser("coverage", help="show stored date range per ticker")
     p_cov.add_argument("--db", default=str(DEFAULT_DB))

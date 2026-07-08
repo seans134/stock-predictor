@@ -65,6 +65,10 @@ class PolygonClient:
         response.raise_for_status()
         return response.json()
 
+    def get_json(self, url: str, params: dict | None = None) -> dict:
+        """Rate-limited GET for other Polygon endpoints (e.g. news)."""
+        return self._get(url, params)
+
     def fetch_5min_bars(
         self,
         ticker: str,

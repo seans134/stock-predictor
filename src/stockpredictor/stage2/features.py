@@ -24,11 +24,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from stockpredictor.news.features import STAGE2_NEWS_FEATURES, NewsFeatureBuilder
 from stockpredictor.sessions import ET, SessionCalendar
 
 EPS = 1e-12
 
-FEATURE_COLUMNS = [
+_PRICE_FEATURES = [
     "r5",                # last completed 5-min log return
     "r15",               # 15-min log return (3 bars)
     "r30",               # 30-min log return (6 bars)
@@ -47,6 +48,9 @@ FEATURE_COLUMNS = [
     "qqq_r15",
     "qqq_r30",
 ]
+
+# News features are NaN when no news store is supplied (unknown, not zero).
+FEATURE_COLUMNS = _PRICE_FEATURES + STAGE2_NEWS_FEATURES
 
 META_COLUMNS = ["ticker", "date", "bar_start"]
 TARGET_COLUMN = "fwd_ret_15m"
@@ -127,6 +131,7 @@ def build_features(
     bars_by_ticker: dict[str, pd.DataFrame],
     calendar: SessionCalendar,
     context_tickers: tuple[str, str] = ("SPY", "QQQ"),
+    news: NewsFeatureBuilder | None = None,
 ) -> pd.DataFrame:
     """Build the Stage 2 training frame from per-ticker RTH bar frames
     (UTC-indexed, as-of filtered). Context tickers contribute market
@@ -157,6 +162,15 @@ def build_features(
             else:
                 df[f"{prefix}_r15"] = np.nan
                 df[f"{prefix}_r30"] = np.nan
+
+        if news is not None:
+            bar_ends = df.index + pd.Timedelta("5min")
+            news_feats = news.stage2_features(ticker, bar_ends)
+            news_feats.index = df.index
+            df = df.join(news_feats)
+        else:
+            for col in STAGE2_NEWS_FEATURES:
+                df[col] = np.nan
 
         df["ticker"] = ticker
         df["date"] = df.index.date
