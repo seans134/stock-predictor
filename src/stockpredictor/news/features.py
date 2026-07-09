@@ -17,6 +17,7 @@ import pandas as pd
 
 from stockpredictor.data.news_store import NewsStore
 from stockpredictor.news.clustering import cluster_articles
+from stockpredictor.news.events import FEATURED_EVENT_TYPES, classify_event
 
 # Half-life of an event's influence on the pre-market snapshot. Named
 # starting value, tunable per fold like every other constant.
@@ -32,13 +33,13 @@ STAGE1_NEWS_FEATURES = [
     "news_source_diversity",  # distinct publishers in the last 24h
     "news_novelty_frac",      # fraction of 24h events first seen in 24h
     "news_burst",             # 24h event count vs trailing 20-session mean
-]
+] + [f"news_evt_{t}_w" for t in FEATURED_EVENT_TYPES]  # decayed weight per type
 
 STAGE2_NEWS_FEATURES = [
     "news_articles_2h",
     "news_articles_24h",
     "news_sent_signed_2h",
-]
+] + [f"news_evt_{t}_2h" for t in FEATURED_EVENT_TYPES]  # 2h count per type
 
 _SENTIMENT_VALUE = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}
 
@@ -55,7 +56,15 @@ class NewsFeatureBuilder:
 
     def __init__(self, store: NewsStore):
         articles = store.all_articles()
-        self._clustered = cluster_articles(articles) if not articles.empty else articles
+        if not articles.empty:
+            clustered = cluster_articles(articles)
+            clustered["event_type"] = [
+                classify_event(t, d)
+                for t, d in zip(clustered["title"], clustered["description"])
+            ]
+            self._clustered = clustered
+        else:
+            self._clustered = articles
         self._store = store
         self._per_ticker: dict[str, pd.DataFrame] = {}
 
@@ -68,6 +77,7 @@ class NewsFeatureBuilder:
                     columns=[
                         "article_id", "published_ts", "available_ts", "publisher",
                         "title", "cluster_id", "is_cluster_start", "sentiment_value",
+                        "event_type",
                     ]
                 )
             else:
@@ -104,11 +114,14 @@ class NewsFeatureBuilder:
                 continue
 
             # Per-cluster view: first visible copy carries the event time;
-            # sentiment averages over copies with known sentiment.
-            events = week.groupby("cluster_id").agg(
+            # sentiment averages over copies with known sentiment; the
+            # cluster's type comes from its earliest copy.
+            week_sorted = week.sort_values("available_ts")
+            events = week_sorted.groupby("cluster_id").agg(
                 first_avail=("available_ts", "min"),
                 sent=("sentiment_value", "mean"),
                 started_recently=("is_cluster_start", "any"),
+                event_type=("event_type", "first"),
             )
             age_hours = (cutoff - events["first_avail"]).dt.total_seconds() / 3600.0
             decay = np.exp(-lam * age_hours.to_numpy())
@@ -116,19 +129,21 @@ class NewsFeatureBuilder:
 
             day_clusters = day["cluster_id"].nunique()
             recent = events[events["first_avail"] >= cutoff - pd.Timedelta(hours=24)]
-            rows.append(
-                {
-                    "news_clusters_24h": float(day_clusters),
-                    "news_clusters_7d": float(len(events)),
-                    "news_decayed_weight": float(decay.sum()),
-                    "news_sent_signed": float((decay * sent).sum()),
-                    "news_sent_magnitude": float((decay * np.abs(sent)).sum()),
-                    "news_source_diversity": float(day["publisher"].nunique()),
-                    "news_novelty_frac": float(recent["started_recently"].mean())
-                    if len(recent)
-                    else 0.0,
-                }
-            )
+            row = {
+                "news_clusters_24h": float(day_clusters),
+                "news_clusters_7d": float(len(events)),
+                "news_decayed_weight": float(decay.sum()),
+                "news_sent_signed": float((decay * sent).sum()),
+                "news_sent_magnitude": float((decay * np.abs(sent)).sum()),
+                "news_source_diversity": float(day["publisher"].nunique()),
+                "news_novelty_frac": float(recent["started_recently"].mean())
+                if len(recent)
+                else 0.0,
+            }
+            etypes = events["event_type"].to_numpy()
+            for etype in FEATURED_EVENT_TYPES:
+                row[f"news_evt_{etype}_w"] = float(decay[etypes == etype].sum())
+            rows.append(row)
 
         out = pd.DataFrame(rows, index=cutoffs)
         # Burst: today's activity vs the stock's own recent normal, strictly
@@ -152,11 +167,15 @@ class NewsFeatureBuilder:
         lo_2h = np.searchsorted(avail, ends - 2 * hour_ns, side="right")
         lo_24h = np.searchsorted(avail, ends - 24 * hour_ns, side="right")
 
-        return pd.DataFrame(
-            {
-                "news_articles_2h": (hi - lo_2h).astype(float),
-                "news_articles_24h": (hi - lo_24h).astype(float),
-                "news_sent_signed_2h": prefix[hi] - prefix[lo_2h],
-            },
-            index=bar_ends,
-        )
+        columns = {
+            "news_articles_2h": (hi - lo_2h).astype(float),
+            "news_articles_24h": (hi - lo_24h).astype(float),
+            "news_sent_signed_2h": prefix[hi] - prefix[lo_2h],
+        }
+        etypes = frame["event_type"].to_numpy() if len(frame) else np.array([])
+        for etype in FEATURED_EVENT_TYPES:
+            type_prefix = np.concatenate(
+                [[0.0], np.cumsum((etypes == etype).astype(float))]
+            )
+            columns[f"news_evt_{etype}_2h"] = type_prefix[hi] - type_prefix[lo_2h]
+        return pd.DataFrame(columns, index=bar_ends)
