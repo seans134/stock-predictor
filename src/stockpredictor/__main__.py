@@ -775,7 +775,10 @@ def cmd_ablation(args: argparse.Namespace) -> int:
     s1_config = Stage1ModelConfig()
     s2_config = QuantileModelConfig()
     costs = CostModel()
-    decision_config = DecisionConfig()
+    decision_config = DecisionConfig(
+        min_news_articles_2h=args.min_recent_news,
+        align_news_sentiment=args.align_sentiment,
+    )
     class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
     p_cols = [f"p_{c}" for c in CLASS_ORDER]
 
@@ -1036,6 +1039,10 @@ def main() -> int:
     p_ab.add_argument("--max-candidates", type=int, default=5)
     p_ab.add_argument("--min-score", type=float, default=0.5)
     p_ab.add_argument("--news-db", default=str(Path("data") / "news.sqlite"))
+    p_ab.add_argument("--min-recent-news", type=float, default=0.0,
+                      help="require this many articles in the last 2h to trade (0 = off)")
+    p_ab.add_argument("--align-sentiment", action="store_true",
+                      help="longs need positive 2h signed sentiment, shorts negative")
     p_ab.add_argument("--tickers", default=None)
     p_ab.add_argument("--name", default="downstream-value-ablation")
     p_ab.add_argument("--db", default=str(DEFAULT_DB))

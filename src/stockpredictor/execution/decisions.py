@@ -35,6 +35,14 @@ class DecisionConfig:
     max_risk_bps: float = 100.0      # worst acceptable q10 (q90 for shorts)
     trend_oppose_bps: float = 30.0   # 30-min move against the trade that vetoes it
     min_minutes_to_close: float = 20.0  # entry+horizon must fit in the session
+    # Fresh-news gate: require at least this many articles in the last 2h
+    # before trading. 0 disables the gate. Rows with unknown news (NaN,
+    # no news store) never pass an active gate — missing data never trades.
+    min_news_articles_2h: float = 0.0
+    # Sentiment alignment: longs require positive 2h signed sentiment,
+    # shorts require negative. Zero (no signed news) or NaN passes neither
+    # direction, so this gate also implies recent signed news must exist.
+    align_news_sentiment: bool = False
 
 
 def decide(
@@ -62,12 +70,26 @@ def decide(
     room = minutes_left >= config.min_minutes_to_close
     trend_known = ~np.isnan(r30)
 
+    if config.min_news_articles_2h > 0:
+        news_2h = frame["news_articles_2h"].to_numpy(dtype=float)
+        news_ok = ~np.isnan(news_2h) & (news_2h >= config.min_news_articles_2h)
+        room = room & news_ok
+
+    if config.align_news_sentiment:
+        sent_2h = frame["news_sent_signed_2h"].to_numpy(dtype=float)
+        long_sent_ok = ~np.isnan(sent_2h) & (sent_2h > 0)
+        short_sent_ok = ~np.isnan(sent_2h) & (sent_2h < 0)
+    else:
+        long_sent_ok = np.ones(len(frame), dtype=bool)
+        short_sent_ok = np.ones(len(frame), dtype=bool)
+
     long_ok = (
         (q50 >= cost + edge)
         & (q10 >= -max_risk)
         & trend_known
         & (r30 > -oppose)
         & room
+        & long_sent_ok
     )
     short_ok = (
         (q50 <= -(cost + edge))
@@ -75,6 +97,7 @@ def decide(
         & trend_known
         & (r30 < oppose)
         & room
+        & short_sent_ok
     )
 
     decisions = np.full(len(frame), HOLD, dtype=object)

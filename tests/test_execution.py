@@ -26,6 +26,8 @@ def _decision_frame(**overrides):
     row = {
         "r30": 0.001,
         "minutes_to_close": 120.0,
+        "news_articles_2h": 2.0,
+        "news_sent_signed_2h": 1.0,
     }
     row.update({k: v for k, v in overrides.items() if k in row})
     preds = {
@@ -55,6 +57,47 @@ def test_decision_gates(overrides, expected):
     frame, preds = _decision_frame(**overrides)
     result = decide(frame, preds, CostModel(), DecisionConfig())
     assert result.iloc[0] == expected
+
+
+def test_fresh_news_gate():
+    gated = DecisionConfig(min_news_articles_2h=1.0)
+
+    frame, preds = _decision_frame()  # has 2 recent articles
+    assert decide(frame, preds, CostModel(), gated).iloc[0] == LONG
+
+    frame, preds = _decision_frame(news_articles_2h=0.0)  # quiet tape
+    assert decide(frame, preds, CostModel(), gated).iloc[0] == HOLD
+
+    frame, preds = _decision_frame(news_articles_2h=np.nan)  # unknown news
+    assert decide(frame, preds, CostModel(), gated).iloc[0] == HOLD
+
+    # Gate disabled (default): unknown news does not block trading.
+    frame, preds = _decision_frame(news_articles_2h=np.nan)
+    assert decide(frame, preds, CostModel(), DecisionConfig()).iloc[0] == LONG
+
+
+def test_sentiment_alignment_gate():
+    aligned = DecisionConfig(align_news_sentiment=True)
+    short_preds = {"q50": -0.0030, "q10": -0.008, "q90": 0.002, "r30": -0.001}
+
+    frame, preds = _decision_frame()  # long forecast, positive sentiment
+    assert decide(frame, preds, CostModel(), aligned).iloc[0] == LONG
+
+    frame, preds = _decision_frame(news_sent_signed_2h=-1.0)  # long vs negative news
+    assert decide(frame, preds, CostModel(), aligned).iloc[0] == HOLD
+
+    frame, preds = _decision_frame(news_sent_signed_2h=0.0)  # no signed news
+    assert decide(frame, preds, CostModel(), aligned).iloc[0] == HOLD
+
+    frame, preds = _decision_frame(news_sent_signed_2h=-1.0, **short_preds)
+    assert decide(frame, preds, CostModel(), aligned).iloc[0] == SHORT
+
+    frame, preds = _decision_frame(news_sent_signed_2h=1.0, **short_preds)
+    assert decide(frame, preds, CostModel(), aligned).iloc[0] == HOLD
+
+    # Gate off: sentiment is ignored entirely.
+    frame, preds = _decision_frame(news_sent_signed_2h=np.nan)
+    assert decide(frame, preds, CostModel(), DecisionConfig()).iloc[0] == LONG
 
 
 def _sim_rows(times_and_decisions, fwd=0.005):
