@@ -26,6 +26,7 @@ def _decision_frame(**overrides):
     row = {
         "r30": 0.001,
         "minutes_to_close": 120.0,
+        "minutes_since_open": 60.0,
         "news_articles_2h": 2.0,
         "news_sent_signed_2h": 1.0,
     }
@@ -73,6 +74,23 @@ def test_fresh_news_gate():
 
     # Gate disabled (default): unknown news does not block trading.
     frame, preds = _decision_frame(news_articles_2h=np.nan)
+    assert decide(frame, preds, CostModel(), DecisionConfig()).iloc[0] == LONG
+
+
+def test_morning_window_gate():
+    gated = DecisionConfig(max_minutes_since_open=150.0)
+
+    frame, preds = _decision_frame(minutes_since_open=60.0)
+    assert decide(frame, preds, CostModel(), gated).iloc[0] == LONG
+
+    frame, preds = _decision_frame(minutes_since_open=200.0)  # afternoon signal
+    assert decide(frame, preds, CostModel(), gated).iloc[0] == HOLD
+
+    frame, preds = _decision_frame(minutes_since_open=np.nan)
+    assert decide(frame, preds, CostModel(), gated).iloc[0] == HOLD
+
+    # Gate off: entry time is not restricted.
+    frame, preds = _decision_frame(minutes_since_open=200.0)
     assert decide(frame, preds, CostModel(), DecisionConfig()).iloc[0] == LONG
 
 

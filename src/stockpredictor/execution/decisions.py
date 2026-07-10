@@ -43,6 +43,11 @@ class DecisionConfig:
     # shorts require negative. Zero (no signed news) or NaN passes neither
     # direction, so this gate also implies recent signed news must exist.
     align_news_sentiment: bool = False
+    # Entry-time window: only trade signals within this many minutes of
+    # the open (0 disables). Motivated by the observed intraday decay of
+    # trade quality; cutoff chosen from exploratory blotter analysis, so
+    # results carry that caveat until holdout confirmation.
+    max_minutes_since_open: float = 0.0
 
 
 def decide(
@@ -74,6 +79,10 @@ def decide(
         news_2h = frame["news_articles_2h"].to_numpy(dtype=float)
         news_ok = ~np.isnan(news_2h) & (news_2h >= config.min_news_articles_2h)
         room = room & news_ok
+
+    if config.max_minutes_since_open > 0:
+        since_open = frame["minutes_since_open"].to_numpy(dtype=float)
+        room = room & ~np.isnan(since_open) & (since_open <= config.max_minutes_since_open)
 
     if config.align_news_sentiment:
         sent_2h = frame["news_sent_signed_2h"].to_numpy(dtype=float)

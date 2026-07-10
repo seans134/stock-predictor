@@ -23,7 +23,7 @@ from stockpredictor.stage2.features import TARGET_COLUMN
 
 HORIZON_BARS = 3  # entry bar t+1 through exit at t+3's close
 
-TRADE_COLUMNS = ["ticker", "date", "bar_start", "direction", "gross_ret", "net_ret"]
+TRADE_COLUMNS = ["ticker", "date", "bar_start", "direction", "gross_ret", "net_ret", "q10"]
 
 
 def simulate(frame: pd.DataFrame, costs: CostModel) -> pd.DataFrame:
@@ -57,6 +57,8 @@ def simulate(frame: pd.DataFrame, costs: CostModel) -> pd.DataFrame:
                     "direction": decision,
                     "gross_ret": gross,
                     "net_ret": gross - cost,
+                    # Forecast downside at decision time, for risk sizing.
+                    "q10": getattr(row, "q10", float("nan")),
                 }
             )
             # Position spans bars t+1..t+3; next signal usable at t+3.

@@ -550,9 +550,10 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     s1_config = Stage1ModelConfig()
     s2_config = QuantileModelConfig()
     costs = CostModel()
-    decision_config = DecisionConfig()
+    decision_config = DecisionConfig(max_minutes_since_open=args.max_entry_minutes)
     class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
     p_cols = [f"p_{c}" for c in CLASS_ORDER]
+    all_trades: list = []
 
     def label_rows(day_set, stats):
         segment = windows[windows["date"].isin(day_set)]
@@ -605,7 +606,9 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         preds = s2_model.predict(s2_test)
         sim_frame = s2_test.copy()
         sim_frame["decision"] = decide(s2_test, preds, costs, decision_config)
+        sim_frame["q10"] = preds["q10"]
         trades = simulate(sim_frame, costs)
+        all_trades.append(trades)
         metrics = summarize(trades, len(s2_test), len(test_days))
         metrics["n_candidates"] = len(candidates)
         metrics["candidate_days"] = int(snap[snap["score"] >= args.min_score]["date"].nunique())
@@ -659,6 +662,28 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     print(f"  sum of net returns: {sum(totals):.4f} ({sum(totals) * 1e4:.0f} bps)")
     if all_net:
         print(f"  avg net per trade: {statistics.mean(all_net):.2f} bps")
+
+    # Portfolio layer: stitch fold trades chronologically and replay them
+    # under the risk engine's sizing and portfolio controls.
+    from stockpredictor.execution.portfolio import RiskConfig, run_portfolio
+
+    risk_config = RiskConfig()
+    stitched = pd.concat(all_trades, ignore_index=True) if all_trades else pd.DataFrame()
+    if not stitched.empty:
+        trades_path = Path("data") / f"trades_{args.name}.csv"
+        stitched.sort_values("bar_start").to_csv(trades_path, index=False)
+        print(f"\nTrade list written to {trades_path}")
+    portfolio = run_portfolio(stitched, risk_config)
+    print("\nPortfolio (walk-forward test months stitched, risk engine v1):")
+    print(f"  initial equity:    ${risk_config.initial_equity:,.0f}")
+    print(f"  final equity:      ${portfolio['final_equity']:,.2f}")
+    print(f"  total return:      {portfolio['total_return']:+.2%}")
+    print(f"  max drawdown:      {portfolio['max_drawdown']:.2%}")
+    print(
+        f"  trades taken:      {portfolio['n_taken']} "
+        f"(skipped: {portfolio['n_skipped_concurrency']} concurrency, "
+        f"{portfolio['n_skipped_daily_halt']} daily-halt)"
+    )
     print(f"\nExperiment record: {record['path']}")
     return 0
 
@@ -1022,6 +1047,8 @@ def main() -> int:
     p_bt.add_argument("--holdout", type=int, default=42)
     p_bt.add_argument("--max-candidates", type=int, default=5)
     p_bt.add_argument("--min-score", type=float, default=0.5)
+    p_bt.add_argument("--max-entry-minutes", type=float, default=0.0,
+                      help="only trade signals within this many minutes of the open (0 = off)")
     p_bt.add_argument("--tickers", default=None)
     p_bt.add_argument("--name", default="after-cost-backtest")
     p_bt.add_argument("--db", default=str(DEFAULT_DB))
