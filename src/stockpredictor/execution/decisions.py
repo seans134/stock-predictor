@@ -48,6 +48,10 @@ class DecisionConfig:
     # trade quality; cutoff chosen from exploratory blotter analysis, so
     # results carry that caveat until holdout confirmation.
     max_minutes_since_open: float = 0.0
+    # Cost-aware entry: when > 0, the q50-edge condition is replaced by
+    # the classifier heads' P(beat costs) >= min_p_win (predictions must
+    # carry p_long_win / p_short_win). Risk caps and other gates remain.
+    min_p_win: float = 0.0
 
 
 def decide(
@@ -92,8 +96,15 @@ def decide(
         long_sent_ok = np.ones(len(frame), dtype=bool)
         short_sent_ok = np.ones(len(frame), dtype=bool)
 
+    if config.min_p_win > 0:
+        long_edge = predictions["p_long_win"].to_numpy() >= config.min_p_win
+        short_edge = predictions["p_short_win"].to_numpy() >= config.min_p_win
+    else:
+        long_edge = q50 >= cost + edge
+        short_edge = q50 <= -(cost + edge)
+
     long_ok = (
-        (q50 >= cost + edge)
+        long_edge
         & (q10 >= -max_risk)
         & trend_known
         & (r30 > -oppose)
@@ -101,7 +112,7 @@ def decide(
         & long_sent_ok
     )
     short_ok = (
-        (q50 <= -(cost + edge))
+        short_edge
         & (q90 <= max_risk)
         & trend_known
         & (r30 < oppose)

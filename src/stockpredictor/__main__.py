@@ -550,7 +550,10 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     s1_config = Stage1ModelConfig()
     s2_config = QuantileModelConfig()
     costs = CostModel()
-    decision_config = DecisionConfig(max_minutes_since_open=args.max_entry_minutes)
+    decision_config = DecisionConfig(
+        max_minutes_since_open=args.max_entry_minutes,
+        min_p_win=args.min_p_win if args.cost_aware else 0.0,
+    )
     class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
     p_cols = [f"p_{c}" for c in CLASS_ORDER]
     all_trades: list = []
@@ -594,6 +597,11 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         # Stage 2 on candidates only.
         s2_train = s2_features[s2_features["date"].isin(train_days)]
         s2_model = Stage2QuantileModel(s2_config).fit(s2_train)
+        cost_model_heads = None
+        if args.cost_aware:
+            from stockpredictor.stage2.cost_aware import Stage2CostClassifier
+
+            cost_model_heads = Stage2CostClassifier(costs.round_trip_cost).fit(s2_train)
         pair_index = pd.MultiIndex.from_frame(s2_features[["ticker", "date"]])
         s2_test = s2_features.loc[pair_index.isin(candidates)]
 
@@ -604,6 +612,8 @@ def cmd_backtest(args: argparse.Namespace) -> int:
             return metrics
 
         preds = s2_model.predict(s2_test)
+        if cost_model_heads is not None:
+            preds = preds.join(cost_model_heads.predict(s2_test))
         sim_frame = s2_test.copy()
         sim_frame["decision"] = decide(s2_test, preds, costs, decision_config)
         sim_frame["q10"] = preds["q10"]
@@ -1049,6 +1059,9 @@ def main() -> int:
     p_bt.add_argument("--min-score", type=float, default=0.5)
     p_bt.add_argument("--max-entry-minutes", type=float, default=0.0,
                       help="only trade signals within this many minutes of the open (0 = off)")
+    p_bt.add_argument("--cost-aware", action="store_true",
+                      help="entry edge from P(beat costs) classifier heads instead of q50")
+    p_bt.add_argument("--min-p-win", type=float, default=0.55)
     p_bt.add_argument("--tickers", default=None)
     p_bt.add_argument("--name", default="after-cost-backtest")
     p_bt.add_argument("--db", default=str(DEFAULT_DB))
