@@ -698,6 +698,199 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_orb(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from stockpredictor.data.asof import AsOfData
+    from stockpredictor.data.store import BarStore
+    from stockpredictor.execution.costs import CostModel
+    from stockpredictor.execution.portfolio import RiskConfig, run_portfolio
+    from stockpredictor.execution.simulator import summarize
+    from stockpredictor.labeling.labeler import LabelConfig, classify_sessions, qualify_windows
+    from stockpredictor.labeling.tod import TimeOfDayStats
+    from stockpredictor.labeling.windows import LABEL_AS_OF_DELAY, session_windows
+    from stockpredictor.orb.backtest import run_orb
+    from stockpredictor.orb.strategy import ORBConfig
+    from stockpredictor.sessions import ET, default_calendar
+    from stockpredictor.stage1.calibration import DirichletCalibrator
+    from stockpredictor.stage1.features import build_stage1_features
+    from stockpredictor.stage1.model import (
+        CLASS_ORDER, Stage1Classifier, Stage1ModelConfig, proba_frame,
+    )
+    from stockpredictor.validation.folds import WalkForwardConfig, generate_folds
+    from stockpredictor.validation.harness import run_walkforward
+
+    start = dt.date.fromisoformat(args.start)
+    end = dt.date.fromisoformat(args.end)
+    wf_config = WalkForwardConfig(
+        train_sessions=args.train, test_sessions=args.test, step_sessions=args.step,
+        calibrate_sessions=args.calibrate, embargo_sessions=args.embargo,
+        holdout_sessions=args.holdout,
+    )
+    calendar = default_calendar()
+    sessions = calendar.sessions_between(start, end)
+    session_set = set(sessions)
+    folds = generate_folds(sessions, wf_config)
+    if not folds:
+        print("No folds fit in the requested range.", file=sys.stderr)
+        return 1
+    print(f"{len(folds)} folds over {len(sessions)} sessions ({args.holdout} held out)")
+
+    store = BarStore(args.db)
+    try:
+        tickers = (
+            [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+            if args.tickers else store.tickers()
+        )
+        data = AsOfData(store)
+        range_close = pd.Timestamp(calendar.session_close(sessions[-1]))
+        as_of = range_close + LABEL_AS_OF_DELAY
+        range_open = pd.Timestamp(calendar.session_open(sessions[0])) - pd.Timedelta("6h")
+        print(f"Loading extended-hours bars for {len(tickers)} tickers...")
+        bars_by_ticker = {
+            t: data.get_bars(t, as_of=as_of, lookback=as_of - range_open) for t in tickers
+        }
+    finally:
+        store.close()
+
+    opens = {d: pd.Timestamp(calendar.session_open(d)) for d in sessions}
+    closes = {d: pd.Timestamp(calendar.session_close(d)) for d in sessions}
+
+    def rth_only(bars):
+        if bars.empty:
+            return bars
+        day = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        ts = pd.Series(bars.index.tz_convert(ET), index=bars.index)
+        mask = day.isin(session_set) & (ts >= day.map(opens)) & (ts < day.map(closes))
+        return bars.loc[mask.to_numpy()]
+
+    rth_by_ticker = {t: rth_only(b) for t, b in bars_by_ticker.items()}
+
+    print("Building Stage 1 pre-market features (for the gated arm)...")
+    s1_features = build_stage1_features(bars_by_ticker, calendar)
+    print("Building 15-min windows for Stage 1 labels...")
+    window_frames = []
+    for ticker, bars in rth_by_ticker.items():
+        if bars.empty:
+            continue
+        et_dates = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+        for day, day_bars in bars.groupby(et_dates):
+            window_frames.append(session_windows(day_bars, ticker, day, calendar))
+    windows = pd.concat(window_frames, ignore_index=True)
+
+    label_config = LabelConfig()
+    s1_config = Stage1ModelConfig()
+    costs = CostModel()
+    orb_config = ORBConfig(
+        range_minutes=args.range_minutes, stop_atr_mult=args.stop_atr_mult, rr=args.rr,
+        min_break_atr=args.min_break_atr, vol_mult=args.vol_mult, stop_mode=args.stop_mode,
+    )
+    class_index = {label: i for i, label in enumerate(CLASS_ORDER)}
+    p_cols = [f"p_{c}" for c in CLASS_ORDER]
+    trades_pure_all, trades_gated_all = [], []
+
+    def label_rows(day_set, stats):
+        segment = windows[windows["date"].isin(day_set)]
+        labels = classify_sessions(
+            qualify_windows(stats.transform(segment), label_config), calendar, label_config
+        )
+        return s1_features.merge(labels[["ticker", "date", "label"]], on=["ticker", "date"])
+
+    def run_fold(fold):
+        train_days = set(fold.train_days)
+        test_days = set(fold.test_days)
+
+        # Stage 1 watchlist for the gated arm.
+        stats = TimeOfDayStats().fit(windows[windows["date"].isin(train_days)])
+        s1_model = Stage1Classifier(s1_config).fit(label_rows(train_days, stats))
+        calib_rows = label_rows(set(fold.calibrate_days), stats)
+        calibrator = DirichletCalibrator().fit(
+            s1_model.predict_proba(calib_rows)[p_cols].to_numpy(),
+            calib_rows["label"].map(class_index).to_numpy(),
+        )
+        test_snapshots = s1_features[s1_features["date"].isin(test_days)]
+        scores = proba_frame(
+            calibrator.transform(s1_model.predict_proba(test_snapshots)[p_cols].to_numpy()),
+            test_snapshots.index,
+        )
+        snap = test_snapshots[["ticker", "date"]].copy()
+        snap["score"] = scores["opportunity_score"]
+        watchlist = set(
+            zip(*snap[snap["score"] >= args.min_score][["ticker", "date"]].to_numpy().T)
+        ) if not snap.empty else set()
+
+        # ORB needs the prior session for ATR, so include the day before each test
+        # day's bars per ticker. Slice each ticker to test days + one prior session.
+        test_rth = {}
+        for t, bars in rth_by_ticker.items():
+            if bars.empty:
+                continue
+            et_dates = pd.Series(bars.index.tz_convert(ET).date, index=bars.index)
+            keep_days = set(test_days)
+            # add the immediately-preceding stored session per test day
+            all_days = sorted(set(et_dates))
+            idx_of = {d: i for i, d in enumerate(all_days)}
+            for d in list(test_days):
+                if d in idx_of and idx_of[d] > 0:
+                    keep_days.add(all_days[idx_of[d] - 1])
+            test_rth[t] = bars.loc[et_dates.isin(keep_days).to_numpy()]
+
+        pure = run_orb(test_rth, orb_config, costs)
+        gated = run_orb(test_rth, orb_config, costs, universe_filter=watchlist)
+        # keep only trades whose DATE is a test day (prior session was ATR context only)
+        pure = pure[pure["date"].isin(test_days)]
+        gated = gated[gated["date"].isin(test_days)]
+        trades_pure_all.append(pure)
+        trades_gated_all.append(gated)
+
+        m_pure = summarize(pure, len(pure), len(test_days))
+        m_gated = summarize(gated, len(gated), len(test_days))
+        print(f"  fold {fold.fold_id}: pure {m_pure['n_trades']} trades, "
+              f"gated {m_gated['n_trades']} trades, watchlist {len(watchlist)}")
+        return {
+            "watchlist_size": len(watchlist),
+            **{f"pure_{k}": v for k, v in m_pure.items()},
+            **{f"gated_{k}": v for k, v in m_gated.items()},
+        }
+
+    record = run_walkforward(
+        folds, run_fold, experiment_name=args.name,
+        config_record={
+            "walkforward": wf_config, "label": label_config, "stage1": s1_config,
+            "costs": costs, "orb": orb_config, "min_score": args.min_score,
+            "tickers": tickers, "range": [str(start), str(end)],
+        },
+    )
+
+    def stitch_and_report(chunks, label):
+        stitched = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+        if not stitched.empty:
+            path = Path("data") / f"trades_{args.name}_{label}.csv"
+            stitched.sort_values("bar_start").to_csv(path, index=False)
+            print(f"  {label} trades -> {path}")
+        portfolio = run_portfolio(stitched, RiskConfig())
+        print(f"  {label}: final ${portfolio['final_equity']:,.0f}  "
+              f"return {portfolio['total_return']:+.2%}  maxDD {portfolio['max_drawdown']:.2%}  "
+              f"taken {portfolio['n_taken']}")
+        return portfolio
+
+    print(f"\n{'fold':>4} {'test period':^23} {'wl':>4} {'pure n':>7} {'pure net':>9} "
+          f"{'gated n':>8} {'gated net':>10}")
+    for fr in record["folds"]:
+        m = fr["metrics"]
+        pn = f"{m['pure_avg_net_bps']:.1f}bp" if m["pure_n_trades"] else "  -"
+        gn = f"{m['gated_avg_net_bps']:.1f}bp" if m["gated_n_trades"] else "  -"
+        print(f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]} "
+              f"{m['watchlist_size']:>4} {m['pure_n_trades']:>7} {pn:>9} "
+              f"{m['gated_n_trades']:>8} {gn:>10}")
+
+    print("\nPortfolio (walk-forward test months stitched, risk engine v1):")
+    stitch_and_report(trades_pure_all, "pure")
+    stitch_and_report(trades_gated_all, "gated")
+    print(f"\nExperiment record: {record['path']}")
+    return 0
+
+
 def cmd_ablation(args: argparse.Namespace) -> int:
     """The plan's downstream-value test: the same Stage 2 model evaluated
     on ALL test ticker-days vs ONLY Stage 1 candidates. If Stage 2 is no
@@ -1066,6 +1259,27 @@ def main() -> int:
     p_bt.add_argument("--name", default="after-cost-backtest")
     p_bt.add_argument("--db", default=str(DEFAULT_DB))
     p_bt.set_defaults(func=cmd_backtest)
+
+    p_orb = sub.add_parser("orb", help="opening-range breakout backtest (pure vs Stage 1-gated)")
+    p_orb.add_argument("--start", required=True)
+    p_orb.add_argument("--end", required=True)
+    p_orb.add_argument("--train", type=int, default=250)
+    p_orb.add_argument("--test", type=int, default=21)
+    p_orb.add_argument("--step", type=int, default=21)
+    p_orb.add_argument("--calibrate", type=int, default=40)
+    p_orb.add_argument("--embargo", type=int, default=1)
+    p_orb.add_argument("--holdout", type=int, default=42)
+    p_orb.add_argument("--range-minutes", type=int, default=15, choices=[15, 30])
+    p_orb.add_argument("--rr", type=float, default=1.0)
+    p_orb.add_argument("--stop-atr-mult", type=float, default=1.0)
+    p_orb.add_argument("--min-break-atr", type=float, default=0.10)
+    p_orb.add_argument("--vol-mult", type=float, default=1.0)
+    p_orb.add_argument("--stop-mode", default="atr", choices=["atr", "boundary"])
+    p_orb.add_argument("--min-score", type=float, default=0.5)
+    p_orb.add_argument("--tickers", default=None)
+    p_orb.add_argument("--name", default="orb-backtest")
+    p_orb.add_argument("--db", default=str(DEFAULT_DB))
+    p_orb.set_defaults(func=cmd_orb)
 
     p_ab = sub.add_parser("ablation", help="Stage 2 on candidates vs full universe")
     p_ab.add_argument("--start", required=True)
