@@ -52,8 +52,9 @@ def run_portfolio(trades: pd.DataFrame, config: RiskConfig) -> dict:
     q10 forecast that motivated the trade. If the frame carries
     `entry_ts`/`exit_ts` columns (e.g. ORB's variable holding periods) they drive the
     entry/exit timing; otherwise the fixed 15-minute Stage 2 horizon is assumed.
-    Entries blocked by a control
-    are skipped (never queued). P&L realizes at exit (entry + 15 min).
+    Entries blocked by a control are skipped (never queued). P&L realizes at
+    exit — `exit_ts` when explicit entry/exit timestamps are supplied,
+    otherwise entry + 15 min (the fixed Stage 2 horizon).
     Returns portfolio metrics plus the equity curve.
     """
     if trades.empty:

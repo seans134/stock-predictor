@@ -830,6 +830,8 @@ def cmd_orb(args: argparse.Namespace) -> int:
             # add the immediately-preceding stored session per test day
             all_days = sorted(set(et_dates))
             idx_of = {d: i for i, d in enumerate(all_days)}
+            # One prior stored session is loaded as ATR context; assumes
+            # atr_lookback_sessions == 1 (the default).
             for d in list(test_days):
                 if d in idx_of and idx_of[d] > 0:
                     keep_days.add(all_days[idx_of[d] - 1])
@@ -845,6 +847,9 @@ def cmd_orb(args: argparse.Namespace) -> int:
 
         m_pure = summarize(pure, len(pure), len(test_days))
         m_gated = summarize(gated, len(gated), len(test_days))
+        # ORB has no decision-row universe; hold_fraction is not meaningful here.
+        m_pure.pop("hold_fraction", None)
+        m_gated.pop("hold_fraction", None)
         print(f"  fold {fold.fold_id}: pure {m_pure['n_trades']} trades, "
               f"gated {m_gated['n_trades']} trades, watchlist {len(watchlist)}")
         return {
@@ -863,7 +868,8 @@ def cmd_orb(args: argparse.Namespace) -> int:
     )
 
     def stitch_and_report(chunks, label):
-        stitched = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
+        non_empty = [c for c in chunks if not c.empty]
+        stitched = pd.concat(non_empty, ignore_index=True) if non_empty else pd.DataFrame()
         if not stitched.empty:
             path = Path("data") / f"trades_{args.name}_{label}.csv"
             stitched.sort_values("bar_start").to_csv(path, index=False)
