@@ -49,7 +49,10 @@ def run_portfolio(trades: pd.DataFrame, config: RiskConfig) -> dict:
     """Replay simulator trades chronologically under portfolio controls.
 
     `trades` needs bar_start (tz-aware), date, ticker, net_ret, and the
-    q10 forecast that motivated the trade. Entries blocked by a control
+    q10 forecast that motivated the trade. If the frame carries
+    `entry_ts`/`exit_ts` columns (e.g. ORB's variable holding periods) they drive the
+    entry/exit timing; otherwise the fixed 15-minute Stage 2 horizon is assumed.
+    Entries blocked by a control
     are skipped (never queued). P&L realizes at exit (entry + 15 min).
     Returns portfolio metrics plus the equity curve.
     """
@@ -85,9 +88,14 @@ def run_portfolio(trades: pd.DataFrame, config: RiskConfig) -> dict:
             day_pnl += pnl
             equity_points.append((exit_ts, equity))
 
+    has_explicit_ts = {"entry_ts", "exit_ts"}.issubset(trades.columns)
     for row in ordered.itertuples():
-        entry_ts = row.bar_start + pd.Timedelta(minutes=5)  # next bar open
-        exit_ts = row.bar_start + pd.Timedelta(minutes=5 * (HORIZON_BARS + 1))
+        if has_explicit_ts:
+            entry_ts = row.entry_ts
+            exit_ts = row.exit_ts
+        else:
+            entry_ts = row.bar_start + pd.Timedelta(minutes=5)  # next bar open
+            exit_ts = row.bar_start + pd.Timedelta(minutes=5 * (HORIZON_BARS + 1))
 
         if row.date != current_day:
             close_due(None)  # flatten anything left from the prior day
