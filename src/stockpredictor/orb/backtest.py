@@ -55,10 +55,12 @@ def simulate_orb_session(
         return None
     entry_bar = after.index[0]
     entry = float(after.iloc[0]["open"])
+    if pd.isna(entry):
+        return None
     stop, target, risk = stop_and_target(
         entry, sig.direction, sig.range_high, sig.range_low, atr, cfg
     )
-    if risk <= 0:
+    if not (risk > 0):
         return None
 
     forward = session.loc[session.index >= entry_bar]
@@ -75,6 +77,8 @@ def simulate_orb_session(
             break
     if exit_px is None:                    # EOD time-stop
         exit_px = float(forward.iloc[-1]["close"])
+        if pd.isna(exit_px):
+            return None
         exit_reason, exit_ts = "time", forward.index[-1]
 
     gross = sig.direction * (exit_px - entry) / entry

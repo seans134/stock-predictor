@@ -1,5 +1,6 @@
 import datetime as dt
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -103,6 +104,31 @@ def test_no_signal_returns_none():
     ])
     assert simulate_orb_session(flat, atr=2.0, cfg=ORBConfig(), costs=CostModel(),
                                 ticker="AAA", day=DAY) is None
+
+
+def test_nan_entry_open_does_not_trade():
+    rows = [
+        (9, 30, 100, 101, 99, 100, 1000),
+        (9, 35, 100, 101, 99, 100, 1000),
+        (9, 40, 100, 101, 99, 100, 1000),
+        (9, 45, 100, 103, 100, 102.5, 5000),   # confirm long, entry is next bar
+        (9, 50, np.nan, 106, 102, 105, 5000),   # entry bar has NaN open
+    ]
+    assert simulate_orb_session(_session(DAY, rows), atr=2.0, cfg=ORBConfig(rr=1.0),
+                                costs=CostModel(), ticker="AAA", day=DAY) is None
+
+
+def test_nan_final_close_time_stop_does_not_trade():
+    rows = [
+        (9, 30, 100, 101, 99, 100, 1000),
+        (9, 35, 100, 101, 99, 100, 1000),
+        (9, 40, 100, 101, 99, 100, 1000),
+        (9, 45, 100, 103, 100, 102.5, 5000),   # confirm long, entry next bar
+        (9, 50, 103, 103.5, 102, 103, 5000),   # neither stop(101) nor target(105) hit
+        (9, 55, 103, 103.5, 102, np.nan, 5000),  # final bar NaN close -> can't close cleanly
+    ]
+    assert simulate_orb_session(_session(DAY, rows), atr=2.0, cfg=ORBConfig(rr=1.0),
+                                costs=CostModel(), ticker="AAA", day=DAY) is None
 
 
 def _prior_flat(day):
