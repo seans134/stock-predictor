@@ -145,3 +145,23 @@ def test_stop_and_target_boundary_long():
     )
     assert stop == pytest.approx(99.0)       # opposite range side
     assert target == pytest.approx(105.0)    # 102 + 1*(102-99)
+
+
+def test_nan_volume_confirming_bar_does_not_trade():
+    session = _bars([
+        (9, 30, 100, 101, 99, 100, 1000),
+        (9, 35, 100, 101, 99, 100, 1000),
+        (9, 40, 100, 101, 99, 100, 1000),
+        (9, 45, 100, 103, 100, 102.5, np.nan),  # strong break but volume missing
+    ])
+    assert find_orb_signal(session, atr=2.0, cfg=ORBConfig()) is None
+
+
+def test_nan_in_opening_range_does_not_trade():
+    session = _bars([
+        (9, 30, 100, np.nan, 99, 100, 1000),   # missing high in the range window
+        (9, 35, 100, 101, 99, 100, 1000),
+        (9, 40, 100, 101, 99, 100, 1000),
+        (9, 45, 100, 103, 100, 102.5, 5000),
+    ])
+    assert find_orb_signal(session, atr=2.0, cfg=ORBConfig()) is None

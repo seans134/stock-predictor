@@ -13,8 +13,6 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from stockpredictor.execution.decisions import LONG, SHORT  # noqa: F401  (re-exported meaning)
-
 _SESSION_OPEN = pd.Timedelta(hours=9, minutes=30)  # NYSE regular open (ET)
 
 
@@ -52,6 +50,8 @@ def opening_range(session: pd.DataFrame, cfg: ORBConfig) -> tuple[float, float] 
     end = open_ts + pd.Timedelta(minutes=cfg.range_minutes)
     win = session.loc[(session.index >= open_ts) & (session.index < end)]
     if win.empty:
+        return None
+    if win["high"].isna().any() or win["low"].isna().any():
         return None
     return float(win["high"].max()), float(win["low"].min())
 
@@ -98,6 +98,8 @@ def find_orb_signal(
 
     min_break = cfg.min_break_atr * atr
     for ts, bar in after.iterrows():
+        if pd.isna(bar["volume"]) or pd.isna(bar["close"]):
+            continue
         seen_vol = session.loc[session.index <= ts, "volume"]
         if bar["volume"] < cfg.vol_mult * seen_vol.median():
             continue
