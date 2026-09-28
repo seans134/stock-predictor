@@ -99,13 +99,11 @@ def run_portfolio(trades: pd.DataFrame, config: RiskConfig) -> dict:
             exit_ts = row.bar_start + pd.Timedelta(minutes=5 * (HORIZON_BARS + 1))
 
         if row.date != current_day:
-            close_due(None)  # flatten anything left from the prior day
             current_day = row.date
             day_start_equity = equity
             day_pnl = 0.0
             halted = False
-        else:
-            close_due(entry_ts)
+        close_due(entry_ts)
 
         if halted or day_pnl < -config.daily_loss_limit * day_start_equity:
             halted = True
@@ -120,6 +118,7 @@ def run_portfolio(trades: pd.DataFrame, config: RiskConfig) -> dict:
         n_taken += 1
 
     close_due(None)
+    equity_points.sort(key=lambda p: p[0])
     curve = pd.Series(
         [e for _, e in equity_points],
         index=pd.DatetimeIndex([t for t, _ in equity_points]),

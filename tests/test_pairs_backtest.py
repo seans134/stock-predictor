@@ -47,7 +47,9 @@ def _z_to_prices(z_path):
 
 
 def test_long_a_short_b_on_negative_z_then_reversion_exit():
-    # z: -3 (signal), fill next day, then revert to 0 (exit). Pad tail so entry is allowed.
+    # z: -3 (signal), fill next day, then revert to 0 (decision day) and fill the
+    # exit the day AFTER that (delayed exactly like the entry). Pad tail so both
+    # the entry fill and the delayed exit fill have room.
     closes = _z_to_prices([-3.0, -3.0, 0.0, 0.0, 0.0])
     cfg = PairsConfig(z_entry=2.0, z_exit=0.5, z_stop=4.0, max_hold=10)
     trades = simulate_pair(MODEL, closes, cfg, CostModel(), _session_ts(closes.index))
@@ -56,6 +58,7 @@ def test_long_a_short_b_on_negative_z_then_reversion_exit():
     assert tr.direction == 1                                   # long A / short B
     assert tr.entry_date == closes.index[1]                    # filled the day AFTER the -3 signal
     assert tr.exit_reason == "reversion"
+    assert tr.exit_date == closes.index[3]                     # reversion decided at idx2, filled at idx3
     # A rose from exp(-3*sigma) to exp(0)=1 while B flat -> long-A/short-B is profitable.
     assert tr.gross_ret > 0
     assert tr.net_ret == pytest.approx(tr.gross_ret - 2 * CostModel().round_trip_cost)
@@ -66,24 +69,31 @@ def test_short_a_long_b_on_positive_z():
     cfg = PairsConfig(z_entry=2.0, z_exit=0.5, z_stop=4.0, max_hold=10)
     trades = simulate_pair(MODEL, closes, cfg, CostModel(), _session_ts(closes.index))
     assert len(trades) == 1 and trades[0].direction == -1
+    assert trades[0].exit_date == closes.index[3]  # reversion decided at idx2, filled at idx3
     assert trades[0].gross_ret > 0  # A fell to par, short-A/long-B profits
 
 
 def test_divergence_stop():
-    # enter at -2.5, then diverge to -4.5 (|z| >= z_stop) before reverting.
+    # enter at -2.5, then diverge to -4.5 (|z| >= z_stop); stop decided at idx2,
+    # filled at idx3 (the delayed exit).
     closes = _z_to_prices([-2.5, -2.5, -4.5, -4.5, -4.5])
     cfg = PairsConfig(z_entry=2.0, z_exit=0.5, z_stop=4.0, max_hold=10)
     trades = simulate_pair(MODEL, closes, cfg, CostModel(), _session_ts(closes.index))
     assert len(trades) == 1 and trades[0].exit_reason == "stop"
+    assert trades[0].exit_date == closes.index[3]
 
 
 def test_time_stop():
-    # enter, never revert, never diverge past stop -> exit at max_hold.
+    # enter, never revert, never diverge past stop -> time-stop decided once
+    # held >= max_hold, filled the session after that decision.
     z = [-2.5, -2.5] + [-1.5] * 6
     closes = _z_to_prices(z)
     cfg = PairsConfig(z_entry=2.0, z_exit=0.2, z_stop=5.0, max_hold=3)
     trades = simulate_pair(MODEL, closes, cfg, CostModel(), _session_ts(closes.index))
     assert len(trades) == 1 and trades[0].exit_reason == "time"
+    # entry fills at idx1; held>=3 first true at idx4 (4-1=3) -> decided at idx4,
+    # filled at idx5.
+    assert trades[0].exit_date == closes.index[5]
 
 
 def test_window_end_force_flat():

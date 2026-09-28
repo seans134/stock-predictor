@@ -62,7 +62,8 @@ def simulate_pair(
 
     trades: list[PairTrade] = []
     pos = None              # dict: direction, entry_idx, entry_a, entry_b, entry_z
-    pending = None          # (direction, decision_z) awaiting next-session fill
+    pending = None          # (direction, decision_z) awaiting next-session entry fill
+    pending_exit = None     # reason string awaiting next-session exit fill
     last = len(dates) - 1
 
     def close_position(exit_idx: int, reason: str) -> None:
@@ -80,26 +81,34 @@ def simulate_pair(
 
     for idx in range(len(dates)):
         zt = float(z.iloc[idx])
-        # 1) fill a pending entry at THIS close (the session after the signal)
+        # 1) fill a pending exit at THIS close (the session after the exit signal),
+        # symmetric with the entry fill delay below -> no look-ahead on either leg.
+        if pending_exit is not None:
+            close_position(idx, pending_exit)
+            pending_exit = None
+            continue
+        # 2) fill a pending entry at THIS close (the session after the signal)
         if pending is not None and pos is None:
             direction, entry_z = pending
             pos = {"direction": direction, "entry_idx": idx,
                    "entry_a": prices_a[idx], "entry_b": prices_b[idx], "entry_z": entry_z}
             pending = None
             continue
-        # 2) manage an open position
+        # 3) manage an open position: detect an exit condition here, but fill it
+        # next session. The last session has no "next" day to fill on, so force
+        # flat immediately there instead of queuing a pending exit.
         if pos is not None:
             held = idx - pos["entry_idx"]
-            if abs(zt) <= cfg.z_exit:
-                close_position(idx, "reversion")
-            elif abs(zt) >= cfg.z_stop:
-                close_position(idx, "stop")
-            elif held >= cfg.max_hold:
-                close_position(idx, "time")
-            elif idx == last:
+            if idx == last:
                 close_position(idx, "window_end")
+            elif abs(zt) <= cfg.z_exit:
+                pending_exit = "reversion"
+            elif abs(zt) >= cfg.z_stop:
+                pending_exit = "stop"
+            elif held >= cfg.max_hold:
+                pending_exit = "time"
             continue
-        # 3) flat: look for an entry signal, but only if a fill day AND an exit day remain
+        # 4) flat: look for an entry signal, but only if a fill day AND an exit day remain
         if idx < last - 1:
             if zt <= -cfg.z_entry:
                 pending = (1, zt)

@@ -955,6 +955,8 @@ def cmd_pairs(args: argparse.Namespace) -> int:
         trades = run_pairs(models, test_panel, cfg, costs, session_ts)
         all_trades.append(trades)
         metrics = summarize(trades, len(trades), len(test_days))
+        # Pairs has no decision-row universe; hold_fraction is not meaningful here.
+        metrics.pop("hold_fraction", None)
         metrics["n_pairs"] = len(models)
         print(f"  fold {fold.fold_id}: {len(models)} pairs, {metrics['n_trades']} trades")
         return metrics
@@ -982,6 +984,7 @@ def cmd_pairs(args: argparse.Namespace) -> int:
         if any(not t.empty for t in all_trades) else pd.DataFrame()
     if not stitched.empty:
         path = Path("data") / f"trades_{args.name}.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
         stitched.sort_values("bar_start").to_csv(path, index=False)
         print(f"\nTrades -> {path}")
     portfolio = run_portfolio(stitched, RiskConfig())
