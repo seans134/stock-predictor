@@ -1,0 +1,106 @@
+{
+  "experiment_id": "H1-20261104T214237-53e350",
+  "registration_sha256": "48038513c073ed076845d22846dc659a2858998ad89c755122fc0a4c5989b70a",
+  "decision": "fail",
+  "decision_basis": "Daily net return at registered costs is not above both zero and the control.",
+  "status": "completed_development_only",
+  "gap_policy_version": "h1-gap-v2",
+  "primary": {
+    "final_equity": 97901.81329076136,
+    "total_return": -0.020981867092386364,
+    "max_drawdown": -0.020981867092386385,
+    "n_taken": 874,
+    "avg_gross_bps": -1.1210428169157698,
+    "avg_net_bps": -12.121042816915777,
+    "active_dates": 196,
+    "daily_mean_bps": -1.0088189721510568,
+    "daily_mean_95pct_interval_bps": [
+      -1.51081496602455,
+      -0.508796560533147
+    ],
+    "incremental_daily_mean_95pct_interval_bps": [
+      -0.1609151273832184,
+      1.2922962655414423
+    ]
+  },
+  "control": {
+    "final_equity": 96745.44417644804,
+    "total_return": -0.03254555823551952,
+    "max_drawdown": -0.032810904593023445,
+    "n_taken": 1256,
+    "avg_gross_bps": -2.162871870609838,
+    "avg_net_bps": -13.162871870609843,
+    "active_dates": 203,
+    "daily_mean_bps": -1.5744654190173906
+  },
+  "stress": {
+    "daily_mean_bps": -1.0088189721510568,
+    "n_taken": 874,
+    "gap_affected_signals": 0,
+    "stress_net_return": -0.05
+  },
+  "cost_scenarios_bps": {
+    "0": {
+      "final_equity": 99802.54968926364,
+      "total_return": -0.001974503107363579,
+      "max_drawdown": -0.004527242165584501,
+      "n_taken": 874,
+      "avg_gross_bps": -1.1210428169157698,
+      "avg_net_bps": -1.1210428169157698,
+      "active_dates": 196,
+      "daily_mean_bps": -0.09328535222513382
+    },
+    "2": {
+      "final_equity": 99454.25025611046,
+      "total_return": -0.005457497438895342,
+      "max_drawdown": -0.006093374164263933,
+      "n_taken": 874,
+      "avg_gross_bps": -1.1210428169157698,
+      "avg_net_bps": -3.121042816915767,
+      "active_dates": 196,
+      "daily_mean_bps": -0.25974921929314937
+    },
+    "5": {
+      "final_equity": 98934.06809146986,
+      "total_return": -0.010659319085301378,
+      "max_drawdown": -0.010953084164758828,
+      "n_taken": 874,
+      "avg_gross_bps": -1.1210428169157698,
+      "avg_net_bps": -6.121042816915774,
+      "active_dates": 196,
+      "daily_mean_bps": -0.5094423457971001
+    },
+    "11": {
+      "final_equity": 97901.81329076136,
+      "total_return": -0.020981867092386364,
+      "max_drawdown": -0.020981867092386385,
+      "n_taken": 874,
+      "avg_gross_bps": -1.1210428169157698,
+      "avg_net_bps": -12.121042816915777,
+      "active_dates": 196,
+      "daily_mean_bps": -1.0088189721510568
+    },
+    "20": {
+      "final_equity": 96373.49555733164,
+      "total_return": -0.036265044426683546,
+      "max_drawdown": -0.0362650444266836,
+      "n_taken": 874,
+      "avg_gross_bps": -1.1210428169157698,
+      "avg_net_bps": -21.121042816915775,
+      "active_dates": 196,
+      "daily_mean_bps": -1.7578598454529317
+    }
+  },
+  "limitations": [
+    "static surviving-name allowlist",
+    "synthetic historical availability",
+    "no observed quotes/impact",
+    "scheduled close proxy, not auction fills",
+    "no corporate-action event feed; prior raw-price scale may be affected",
+    "realized drawdown excludes intraday unrealized losses",
+    "Reconstructed historical bars: decision availability is hypothetical, retrieval provenance is recorded; exploratory only",
+    "Registered gaps treated as no-print intervals; provider evidence is consistent with that but does not prove it",
+    "Split evidence only; spin-offs and other corporate actions are not screened"
+  ],
+  "tests_passed": 208
+}

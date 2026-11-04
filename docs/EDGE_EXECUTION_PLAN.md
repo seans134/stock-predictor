@@ -1,6 +1,6 @@
 **StockPredictor: finding and capturing an edge**
 
-Created October 20, 2026. Status: execution repairs and development research runner implemented; gates remain partially open. H3 failed its first gross-return screen; H1 is blocked by missing session data. See [implementation evidence and next actions](research/2026-10-20-implementation-status.md). This is the active sequence for the next research phase. It supersedes the assumption that the generic 15-minute ML predictor should be the next component optimized; the broader architecture in PROJECT_PLAN.md remains background context.
+Created October 20, 2026. Status: execution repairs and development research runner implemented; gates remain partially open. H3 failed its gross-return screen and [H1 failed its registered screen](research/2026-11-04-h1-results.md) on November 4, 2026. See [implementation evidence](research/2026-10-20-implementation-status.md). This is the active sequence for the next research phase. It supersedes the assumption that the generic 15-minute ML predictor should be the next component optimized; the broader architecture in PROJECT_PLAN.md remains background context.
 
 Research basis: [market-edge memo](research/2026-10-20-market-edge-research.md) and [saved-result audit](research/2026-10-20-audit.json).
 
@@ -88,6 +88,8 @@ Deliverable: a reproducible prospective record, fill-quality report, and operati
 Deliverable: a controlled, auditable deployment—or a documented decision to remain in paper mode. A strategy's purpose is to produce risk-adjusted net value under actual constraints; maintaining trading activity is not an objective.
 
 **Immediate work queue**
+
+November 4 decision: [H1 failed](research/2026-11-04-h1-results.md) at -1.12 bp gross and -12.12 bp net per trade. Do not tune it or buy execution data for it. With H3 also failed, the next direction is an owner decision: H2 evidence collection, a registered pairs run, or recording that no edge was found. Queue items 1 and 2 below are closed by this result; the older entries are kept as history.
 
 Issuer-evidence foundation implemented: [store and bounded collection proof](research/2026-10-21-issuer-evidence-store.md). Two historical issuer sources archived across four observations; one draft event remains blocked by review/timing checks. Next is issuer-release discovery, structured guidance review, and a bounded prospective pilot—not H2 performance evaluation yet.
 
