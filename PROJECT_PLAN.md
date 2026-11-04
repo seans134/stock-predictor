@@ -1,6 +1,6 @@
 # Stock Market Prediction Project
 
-> **Active execution sequence (October 20, 2026):** Follow [the edge execution plan](C:/programming/projects/StockPredictor/docs/EDGE_EXECUTION_PLAN.md) for simulator repairs, registered experiments, validation gates, and prospective deployment. The two-stage design below is architectural background; additional ML optimization is deferred until a simple strategy demonstrates a credible signal after costs.
+> **Active execution sequence (October 20, 2026):** Follow [the edge execution plan](docs/EDGE_EXECUTION_PLAN.md) for simulator repairs, registered experiments, validation gates, and prospective deployment. The two-stage design below is architectural background; additional ML optimization is deferred until a simple strategy demonstrates a credible signal after costs.
 
 ## Project Summary
 

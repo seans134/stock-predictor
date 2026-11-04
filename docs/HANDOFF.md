@@ -1,6 +1,8 @@
 # Handoff — outstanding fixes & improvements
 
-_Last updated: 2026-09-28. Covers the ORB (merged to `main`) and pairs/stat-arb
+_Last updated: 2026-11-04 (status, holdout, pairs and paid-quote notes below); the
+rest dates from 2026-09-28. For research sequencing, `docs/EDGE_EXECUTION_PLAN.md`
+takes precedence over this file. Covers the ORB (merged to `main`) and pairs/stat-arb
 (`feat/pairs-statarb`) work. Nothing here blocks merging; these are the deferred
 minors and known limitations captured during code review so a later session can
 pick them up. Re-verify file:line against current code before acting — line
@@ -17,17 +19,30 @@ numbers drift._
   on the full universe with the corrected multi-day portfolio path** — the only
   smoke figure (12 tickers, −1.4%) predates the fix, so re-run before trusting a
   portfolio equity/DD number.
-- Full test suite: **148 passing**.
+- **Edge research (October 2026)** — H3 failed its gross-return screen, H1 is
+  blocked on ten unresolved bars, and H2 has no verified events. See
+  `docs/EDGE_EXECUTION_PLAN.md` and `docs/research/`.
+- Full test suite: **191 passing** (as of 2026-11-04).
 
-## Priority 0 — do before trusting pairs results
+## Deferred — do before trusting pairs results
+
+Deferred until the H1 decision. Register this as a fourth research family that
+counts toward the search. The command below uses the older CLI rather than the
+research runner, so confirm how it handles coverage before relying on it. Read
+gross figures only for now: multi-day positions are not marked to market, so
+portfolio drawdown is realized only.
 
 - [ ] **Run the full-universe pairs backtest** now that `run_portfolio` is
   multi-day-safe:
   `python -m stockpredictor pairs --start 2024-07-08 --end 2026-09-21 --name pairs-full`
   Read per-fold `avg_gross_bps` / `avg_net_bps` from
   `data/experiments/<stamp>_pairs-full.json` (gross is the signal; the 2-leg
-  modeled cost ≈ 22 bp is the dominant drag). Confirm any candidate config on the
-  untouched 42-session holdout **once**, after selection.
+  modeled cost ≈ 22 bp is the dominant drag).
+- **Correction: there is no untouched holdout.** This file used to recommend
+  confirming on a 42-session holdout. The October manifest
+  (`data/edge_research/split_manifest.json`) records no audited pristine
+  historical holdout, so real confirmation has to come from registered future
+  data.
 
 ## Code polish (non-blocking, ~minutes each)
 
@@ -79,9 +94,11 @@ numbers drift._
 - [ ] **No historical bid/ask quotes on the free Polygon tier.** Every backtest
   here (ORB, pairs, Stage 2) uses a **placeholder `CostModel`** (11 bp round-trip,
   no impact/borrow) and modeled fills. Results are plumbing checks, not tradeable
-  P&L. Pairs pays 2× that per round trip. **A paid quote feed is the single
-  biggest unlock** and is called out in memory `data-source-decision` as "the only
-  credible path to positive edge." Until then, judge strategies on **gross** edge.
+  P&L. Pairs pays 2× that per round trip. **A paid quote feed would be a
+  sharper cost measure, not a source of edge**: with gross edge near zero on ORB and
+  H3, quotes would only measure costs more accurately. Do not buy any until a
+  strategy shows gross edge, and then price only what that strategy needs (E17 in
+  the edge plan). Until then, judge strategies on **gross** edge.
 - [ ] **Commit-trailer inconsistency** on `feat/pairs-statarb`: a couple of
   commits are stamped `Co-Authored-By: Claude Sonnet 5` (a subagent's own session
   attribution) instead of `Claude Opus 4.8`. Cosmetic; squash-merge would erase it.

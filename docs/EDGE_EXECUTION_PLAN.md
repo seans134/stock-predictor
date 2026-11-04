@@ -2,7 +2,7 @@
 
 Created October 20, 2026. Status: execution repairs and development research runner implemented; gates remain partially open. H3 failed its first gross-return screen; H1 is blocked by missing session data. See [implementation evidence and next actions](research/2026-10-20-implementation-status.md). This is the active sequence for the next research phase. It supersedes the assumption that the generic 15-minute ML predictor should be the next component optimized; the broader architecture in PROJECT_PLAN.md remains background context.
 
-Research basis: [market-edge memo](C:/programming/projects/StockPredictor/docs/research/2026-10-20-market-edge-research.md) and [saved-result audit](C:/programming/projects/StockPredictor/docs/research/2026-10-20-audit.json).
+Research basis: [market-edge memo](research/2026-10-20-market-edge-research.md) and [saved-result audit](research/2026-10-20-audit.json).
 
 **Objective and operating rules**
 
