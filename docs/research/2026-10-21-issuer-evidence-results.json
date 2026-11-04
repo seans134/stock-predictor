@@ -1,0 +1,23 @@
+{
+  "counts": {
+    "sources": 2,
+    "versions": 2,
+    "observations": 4,
+    "events": 1,
+    "reviews": 1
+  },
+  "events": [
+    {
+      "event_id": "69932ff6e6e7a817b735dc9cdba856be6390f483e90bd49c8cbbcce6861ad2ce",
+      "evidence_ready": false,
+      "blockers": [
+        "critical_review_incomplete",
+        "exact_publication_time_unverified"
+      ],
+      "strategy_eligible": false,
+      "note": "Strategy timing, universe and duplicate-cluster controls remain separate."
+    }
+  ],
+  "collection_scope": "Two rounds of two historical release URLs; not new-event latency measurement",
+  "tests_passed": 191
+}

@@ -1,0 +1,214 @@
+{
+  "audit": {
+    "articles": 55655,
+    "upward_candidates": 1164,
+    "guidance_mentions": 4185,
+    "guidance_hidden_by_earnings_priority": 1911,
+    "candidate_multiple_tickers": 539,
+    "candidate_analyst_language": 315,
+    "fixed_900_second_availability": 55655,
+    "reviewed_sample_size": 20,
+    "verified_events": 0,
+    "strategy_eligible_events": 0,
+    "status": "blocked_pending_primary_source_and_timestamp_verification",
+    "database_sha256": "24720a8d5972f32242e2d2b6f0a7a0c7b59bd1a10918932297bc36ad4fadc84b",
+    "missing_schema_fields": [
+      "primary_source_url",
+      "full_source_text",
+      "source_versions",
+      "actual_first_seen_at",
+      "processing_completed_at",
+      "comparable_prior_guidance"
+    ]
+  },
+  "fixed_sample_text_reviews": [
+    {
+      "article_id": "31cb2ed3e77a80f6a2bad29dddb80b8a799a9f0fb6fe0eb4ebaf2aba9009e404",
+      "sample_index": 0,
+      "text_review": "screen_false_positive",
+      "reason": "Dividend increases and conservative guidance; no upward guidance revision established.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "3c44cc448ccd6eb2ca2023624d6dde89e452d50d9333407f65a341072dbb5ea5",
+      "sample_index": 1,
+      "text_review": "screen_false_positive",
+      "reason": "Full-year outlook confirmed; increased pace describes strategy, not guidance.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "32d69c5a4454e4062e27a675a7abfa538fe774d750fabed7901fd8c742b2f1a7",
+      "sample_index": 2,
+      "text_review": "screen_false_positive",
+      "reason": "Explicit downward forecast revision; increased competition triggered the broad screen.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "c1ccf2b72ebe8e84c4a8493b2ee8e9ae1176a685270a80815be7ec592a99c619",
+      "sample_index": 3,
+      "text_review": "supports_revision_claim_needs_primary_evidence",
+      "reason": "Text supports raised guidance; prior comparable range and event novelty still unverified.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "3cc4164b1068de2ca9cf8163219540ab3333f4d4acaea3d055b8f2ff78c96c06",
+      "sample_index": 4,
+      "text_review": "supports_revision_claim_needs_primary_evidence",
+      "reason": "Text mentions prior raised guidance in an insider-sale story; novelty unverified.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "56c922b55043cc0835fabb5a91349bf4420aacef23f8c186628a99163f01e3bd",
+      "sample_index": 5,
+      "text_review": "supports_revision_claim_needs_primary_evidence",
+      "reason": "Text claims raised guidance; initiation versus revision and prior comparable period unverified.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "6d934c262b6f6c9177ed91de604f5ebff276abc8b942691273fbf945a6c22ff4",
+      "sample_index": 6,
+      "text_review": "screen_false_positive",
+      "reason": "New business and increased adoption; no comparable prior/new guidance values.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "fe03fadd8048b91ddff5d589df32fb34fcf19c4288a549200da1cc2bc5a4210d",
+      "sample_index": 7,
+      "text_review": "supports_revision_claim_needs_primary_evidence",
+      "reason": "Text supports upward guidance; inspect issuer release and previous guidance.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "4abe212a8528736bf57334913d543941fc5e6f17080ada57bc1abf1d817c48bc",
+      "sample_index": 8,
+      "text_review": "screen_false_positive",
+      "reason": "Forecast refers to consensus comparison; cash flow increased, not guidance.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "be21d197c60f1c54d3c32f3b9143dd877a18c5fa1855a0765701b25091d2d73a",
+      "sample_index": 9,
+      "text_review": "screen_false_positive",
+      "reason": "Explicit unchanged guidance and lack of upward revision; false positive.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "3921dc15fa0534bdc3c52947de5503a04573533f68ff8ae8709d00c108d3cb3b",
+      "sample_index": 10,
+      "text_review": "screen_false_positive",
+      "reason": "Growth increased; no upward revision of operating guidance established.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "5f3a706d8ba4e47a04ffc35fb5aa13f586ab70c29f8d08a9fae2d27140f73f84",
+      "sample_index": 11,
+      "text_review": "screen_false_positive",
+      "reason": "Dividend raised; separate forward guidance does not establish revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "e7436bf5ee26028747eaa8d5fca300b3efea81ba29f5bf5ea652d3be621d91b2",
+      "sample_index": 12,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "be97830affe2d7ee93726de823bd2ecf2957e07d6601a64adbf935fc8bd0f3b2",
+      "sample_index": 13,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "b2df567350dce9a8ffba3df0d0dc5db10f5be4bf03bb982e88b18829120d64e6",
+      "sample_index": 14,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "930306079c3b4ce30b000255077e8c2d5cd69ab36e5a09ecb323306c8d420fbc",
+      "sample_index": 15,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "ff839732f92b259b76f34c941dd6e9aeedb7aa891fa70060b6e0d7817db2a04a",
+      "sample_index": 16,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "1ce7c7cd4e0ac573d94ca43dc7a3118fa3794b7a4fb92f627de45555ecec70ec",
+      "sample_index": 17,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "da58e98d8cd898637da2dd792ddd6079e1dfc643345faa1494b3c39bbfe57a66",
+      "sample_index": 18,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    },
+    {
+      "article_id": "01ed8a52cc88e09c5b26e78d4c71cb2133899874482049b0d8c16fe89c1a5f4c",
+      "sample_index": 19,
+      "text_review": "no_upward_revision_in_stored_text",
+      "reason": "Stored title/description contains no explicit upward issuer guidance revision.",
+      "strategy_eligible": false,
+      "review_scope": "Stored title and description only; no source or timing verification; no strategy returns accessed."
+    }
+  ],
+  "primary_source_example": {
+    "ticker": "DD",
+    "issuer": "DuPont de Nemours, Inc.",
+    "period": "FY2026",
+    "metric": "adjusted EPS",
+    "units": "USD per share",
+    "prior_range": [
+      2.25,
+      2.3
+    ],
+    "new_range": [
+      2.35,
+      2.4
+    ],
+    "prior_publication_date": "2026-02-10",
+    "new_publication_date": "2026-05-05",
+    "prior_url": "https://www.investors.dupont.com/news-and-media/press-release-details/2026/DuPont-Reports-Fourth-Quarter-and-Full-Year-2025-Results/default.aspx",
+    "new_url": "https://www.investors.dupont.com/news-and-media/press-release-details/2026/DuPont-Reports-First-Quarter-2026-Results/default.aspx",
+    "content_status": "Primary issuer releases support an upward revision in the same fiscal-year adjusted-EPS range. Accounting comparability and intervening revisions still require audit.",
+    "actual_first_seen_at": null,
+    "release_time_verified": false,
+    "archived_full_source": false,
+    "strategy_eligible": false,
+    "checked_at": "2026-10-21T17:11:53.584285+00:00"
+  },
+  "candidate_text_false_positives": 8,
+  "candidate_text_sample": 12,
+  "accepted_strategy_events": 0
+}
