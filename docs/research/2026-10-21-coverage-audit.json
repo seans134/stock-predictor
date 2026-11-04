@@ -1,0 +1,118 @@
+{
+  "h1_summary": {
+    "registration_id": "H1-20261020T233927-e760c7",
+    "registration_sha256": "3ed162a3a5255635235437e1c4ef6df2bc26472216251fe0f8c2cc34ff66826d",
+    "database_sha256": "f3fc73ac923f833f13686ceb496dfb9c05d0c7241986ca0df49ad50b38c9ba4e",
+    "audit_source_sha256": "35dab445c0c5bd58d6cc7ba2300434cb20512a63cb8ed830c864658b7126afbf",
+    "created_at": "2026-10-21T16:28:20.998058+00:00",
+    "start": "2025-07-22",
+    "end": "2026-07-08",
+    "evaluation_start": "2025-09-05",
+    "tickers": 46,
+    "ticker_sessions": 11132,
+    "incomplete_sessions": 238,
+    "absent_bars": 17950,
+    "no_timely_version": 0,
+    "interpretation": "Coverage only, including warmup. No returns inspected. Missing bars require source investigation; no exclusion or imputation authorized by this report."
+  },
+  "h3_summary": {
+    "registration_id": "H3-20261020T233844-3988d3",
+    "registration_sha256": "2ccd55749f3f9befab9f81f5e404a610e6666f8a29e4ae4b1f73eb85a34191a7",
+    "database_sha256": "f3fc73ac923f833f13686ceb496dfb9c05d0c7241986ca0df49ad50b38c9ba4e",
+    "audit_source_sha256": "35dab445c0c5bd58d6cc7ba2300434cb20512a63cb8ed830c864658b7126afbf",
+    "created_at": "2026-10-21T16:29:51.125042+00:00",
+    "start": "2025-07-22",
+    "end": "2026-07-08",
+    "evaluation_start": "2025-09-05",
+    "tickers": 1,
+    "ticker_sessions": 242,
+    "incomplete_sessions": 5,
+    "absent_bars": 390,
+    "no_timely_version": 0,
+    "interpretation": "Coverage only, including warmup. No returns inspected. Missing bars require source investigation; no exclusion or imputation authorized by this report."
+  },
+  "whole_session_gaps": {
+    "2026-07-01": 46,
+    "2026-07-02": 46,
+    "2026-07-06": 46,
+    "2026-07-07": 46,
+    "2026-07-08": 46
+  },
+  "partial_session_gaps": [
+    {
+      "ticker": "COST",
+      "date": "2025-09-12",
+      "event_ts": 1757694900,
+      "bar_start_et": "2025-09-12 12:35:00-04:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "DE",
+      "date": "2025-09-10",
+      "event_ts": 1757522100,
+      "bar_start_et": "2025-09-10 12:35:00-04:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "DE",
+      "date": "2025-10-15",
+      "event_ts": 1760551800,
+      "bar_start_et": "2025-10-15 14:10:00-04:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2025-10-22",
+      "event_ts": 1761151800,
+      "bar_start_et": "2025-10-22 12:50:00-04:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2025-10-23",
+      "event_ts": 1761238800,
+      "bar_start_et": "2025-10-23 13:00:00-04:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2025-12-26",
+      "event_ts": 1766777700,
+      "bar_start_et": "2025-12-26 14:35:00-05:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2025-12-26",
+      "event_ts": 1766779500,
+      "bar_start_et": "2025-12-26 15:05:00-05:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2025-12-30",
+      "event_ts": 1767105600,
+      "bar_start_et": "2025-12-30 09:40:00-05:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2026-04-27",
+      "event_ts": 1777307700,
+      "bar_start_et": "2026-04-27 12:35:00-04:00",
+      "reason": "absent"
+    },
+    {
+      "ticker": "FDX",
+      "date": "2026-04-27",
+      "event_ts": 1777309200,
+      "bar_start_et": "2026-04-27 13:00:00-04:00",
+      "reason": "absent"
+    }
+  ],
+  "provider_checks": {
+    "DE_20250910": "HTTP 200; missing 12:35 bar remains absent",
+    "DE_trades_1235": "HTTP 403; cause of gap unverified",
+    "AAPL_20260701": "HTTP 200; all 78 regular-session bars returned; saved separately, no database mutation"
+  }
+}

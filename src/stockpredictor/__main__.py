@@ -617,6 +617,7 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         sim_frame = s2_test.copy()
         sim_frame["decision"] = decide(s2_test, preds, costs, decision_config)
         sim_frame["q10"] = preds["q10"]
+        sim_frame["q90"] = preds["q90"]
         trades = simulate(sim_frame, costs)
         all_trades.append(trades)
         metrics = summarize(trades, len(s2_test), len(test_days))
@@ -893,6 +894,104 @@ def cmd_orb(args: argparse.Namespace) -> int:
     print("\nPortfolio (walk-forward test months stitched, risk engine v1):")
     stitch_and_report(trades_pure_all, "pure")
     stitch_and_report(trades_gated_all, "gated")
+    print(f"\nExperiment record: {record['path']}")
+    return 0
+
+
+def cmd_pairs(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from stockpredictor.data.asof import AsOfData
+    from stockpredictor.data.store import BarStore
+    from stockpredictor.execution.costs import CostModel
+    from stockpredictor.execution.portfolio import RiskConfig, run_portfolio
+    from stockpredictor.execution.simulator import summarize
+    from stockpredictor.pairs.backtest import run_pairs
+    from stockpredictor.pairs.data import load_daily_closes
+    from stockpredictor.pairs.selection import PairsConfig, select_pairs
+    from stockpredictor.sessions import default_calendar
+    from stockpredictor.validation.folds import WalkForwardConfig, generate_folds
+    from stockpredictor.validation.harness import run_walkforward
+
+    start = dt.date.fromisoformat(args.start)
+    end = dt.date.fromisoformat(args.end)
+    wf_config = WalkForwardConfig(
+        train_sessions=args.train, test_sessions=args.test, step_sessions=args.step,
+        embargo_sessions=args.embargo, holdout_sessions=args.holdout,
+    )
+    calendar = default_calendar()
+    sessions = calendar.sessions_between(start, end)
+    folds = generate_folds(sessions, wf_config)
+    if not folds:
+        print("No folds fit in the requested range.", file=sys.stderr)
+        return 1
+    print(f"{len(folds)} folds over {len(sessions)} sessions ({args.holdout} held out)")
+    session_ts = {d: pd.Timestamp(calendar.session_close(d)) for d in sessions}
+
+    store = BarStore(args.db)
+    try:
+        tickers = (
+            [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+            if args.tickers else store.tickers()
+        )
+        print(f"Loading daily closes for {len(tickers)} tickers...")
+        panel = load_daily_closes(AsOfData(store), calendar, tickers, start, end)
+    finally:
+        store.close()
+    print(f"  panel: {panel.shape[0]} sessions x {panel.shape[1]} tickers")
+
+    costs = CostModel()
+    cfg = PairsConfig(
+        min_corr=args.min_corr, max_pairs=args.max_pairs, z_entry=args.z_entry,
+        z_exit=args.z_exit, z_stop=args.z_stop, max_hold=args.max_hold,
+    )
+    all_trades: list = []
+
+    def run_fold(fold):
+        train_days = list(fold.train_days)
+        test_days = list(fold.test_days)
+        train_panel = panel.loc[panel.index.isin(train_days)]
+        test_panel = panel.loc[panel.index.isin(test_days)]
+        models = select_pairs(train_panel, cfg)
+        trades = run_pairs(models, test_panel, cfg, costs, session_ts)
+        all_trades.append(trades)
+        metrics = summarize(trades, len(trades), len(test_days))
+        # Pairs has no decision-row universe; hold_fraction is not meaningful here.
+        metrics.pop("hold_fraction", None)
+        metrics["n_pairs"] = len(models)
+        print(f"  fold {fold.fold_id}: {len(models)} pairs, {metrics['n_trades']} trades")
+        return metrics
+
+    record = run_walkforward(
+        folds, run_fold, experiment_name=args.name,
+        config_record={
+            "walkforward": wf_config, "costs": costs, "pairs": cfg,
+            "tickers": tickers, "range": [str(start), str(end)],
+        },
+    )
+
+    print(f"\n{'fold':>4} {'test period':^23} {'pairs':>5} {'trades':>6} {'hit':>6} "
+          f"{'gross':>7} {'net':>7} {'total':>8}")
+    for fr in record["folds"]:
+        m = fr["metrics"]
+        hit = f"{m['hit_rate']:.1%}" if m["n_trades"] else "  -"
+        gross = f"{m['avg_gross_bps']:.1f}bp" if m["n_trades"] else "  -"
+        net = f"{m['avg_net_bps']:.1f}bp" if m["n_trades"] else "  -"
+        print(f"{fr['fold_id']:>4} {fr['test'][0]} .. {fr['test'][1]} "
+              f"{m['n_pairs']:>5} {m['n_trades']:>6} {hit:>6} {gross:>7} {net:>7} "
+              f"{m['total_net_return']:>8.4f}")
+
+    stitched = pd.concat([t for t in all_trades if not t.empty], ignore_index=True) \
+        if any(not t.empty for t in all_trades) else pd.DataFrame()
+    if not stitched.empty:
+        path = Path("data") / f"trades_{args.name}.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stitched.sort_values("bar_start").to_csv(path, index=False)
+        print(f"\nTrades -> {path}")
+    portfolio = run_portfolio(stitched, RiskConfig())
+    print("\nPortfolio (walk-forward test months stitched, risk engine v1):")
+    print(f"  final ${portfolio['final_equity']:,.0f}  return {portfolio['total_return']:+.2%}  "
+          f"maxDD {portfolio['max_drawdown']:.2%}  taken {portfolio['n_taken']}")
     print(f"\nExperiment record: {record['path']}")
     return 0
 
@@ -1286,6 +1385,25 @@ def main() -> int:
     p_orb.add_argument("--name", default="orb-backtest")
     p_orb.add_argument("--db", default=str(DEFAULT_DB))
     p_orb.set_defaults(func=cmd_orb)
+
+    p_pairs = sub.add_parser("pairs", help="market-neutral pairs / statistical-arbitrage backtest")
+    p_pairs.add_argument("--start", required=True)
+    p_pairs.add_argument("--end", required=True)
+    p_pairs.add_argument("--train", type=int, default=250)
+    p_pairs.add_argument("--test", type=int, default=21)
+    p_pairs.add_argument("--step", type=int, default=21)
+    p_pairs.add_argument("--embargo", type=int, default=1)
+    p_pairs.add_argument("--holdout", type=int, default=42)
+    p_pairs.add_argument("--min-corr", type=float, default=0.80)
+    p_pairs.add_argument("--max-pairs", type=int, default=20)
+    p_pairs.add_argument("--z-entry", type=float, default=2.0)
+    p_pairs.add_argument("--z-exit", type=float, default=0.5)
+    p_pairs.add_argument("--z-stop", type=float, default=3.0)
+    p_pairs.add_argument("--max-hold", type=int, default=20)
+    p_pairs.add_argument("--tickers", default=None)
+    p_pairs.add_argument("--name", default="pairs-backtest")
+    p_pairs.add_argument("--db", default=str(DEFAULT_DB))
+    p_pairs.set_defaults(func=cmd_pairs)
 
     p_ab = sub.add_parser("ablation", help="Stage 2 on candidates vs full universe")
     p_ab.add_argument("--start", required=True)

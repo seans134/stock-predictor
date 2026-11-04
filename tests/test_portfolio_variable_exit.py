@@ -44,7 +44,7 @@ def test_variable_exit_concurrency_counts_full_span():
     assert result["n_skipped_concurrency"] == 1
 
 
-def test_fallback_without_ts_columns_unchanged():
+def test_fallback_uses_corrected_delayed_entry():
     # No entry_ts/exit_ts -> the existing fixed 15-min behavior (regression pin).
     trades = pd.DataFrame([{
         "ticker": "AAA", "date": DAY, "direction": "long",
@@ -52,5 +52,5 @@ def test_fallback_without_ts_columns_unchanged():
     }])
     result = run_portfolio(trades, RiskConfig(max_positions=10))
     assert result["n_taken"] == 1
-    # Fixed horizon exit = bar_start + 5*(HORIZON_BARS+1) = 10:00 + 20min = 10:20.
-    assert result["equity_curve"].index[-1] == _ts(10, 20)
+    # Delayed entry 10:10, then a 15-minute hold to 10:25.
+    assert result["equity_curve"].index[-1] == _ts(10, 25)

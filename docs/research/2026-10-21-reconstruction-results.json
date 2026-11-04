@@ -1,0 +1,265 @@
+{
+  "recovery": {
+    "policy": {
+      "version": "reconstruction-strict-v1",
+      "purpose": "exploratory historical reconstruction only; never confirmation or live input",
+      "merge": "add only audited absent timestamps; preserve every original bar",
+      "availability": "record retrieval time separately; bar-end+5s is an explicit hypothetical decision assumption, not observed availability",
+      "missing": "no imputation, no removed sessions or trades; any unresolved evaluation bar blocks performance",
+      "execution": "unchanged strategy, stop and cost rules; unknown intrabar stop paths cannot be bounded from adjacent candles"
+    },
+    "database_sha256": "f3fc73ac923f833f13686ceb496dfb9c05d0c7241986ca0df49ad50b38c9ba4e",
+    "plan_file_sha256": "f9b19f4183893340b1965a8067d68023854858beb09ec103014e8695dc9d4f6b",
+    "recovered_bars": 18330,
+    "unresolved_bars": 10,
+    "unresolved": [
+      {
+        "ticker": "COST",
+        "event_ts": 1757694900
+      },
+      {
+        "ticker": "DE",
+        "event_ts": 1757522100
+      },
+      {
+        "ticker": "DE",
+        "event_ts": 1760551800
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1761151800
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1761238800
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1766777700
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1766779500
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1767105600
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1777307700
+      },
+      {
+        "ticker": "FDX",
+        "event_ts": 1777309200
+      }
+    ]
+  },
+  "source_response_count": 53,
+  "h3_report": {
+    "primary": {
+      "final_equity": 99733.63050799158,
+      "total_return": -0.0026636949200842253,
+      "max_drawdown": -0.00266624533543429,
+      "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+      "n_taken": 120,
+      "n_skipped_concurrency": 0,
+      "n_skipped_daily_halt": 0,
+      "n_skipped_duplicate": 0,
+      "n_skipped_capital": 0,
+      "peak_gross_fraction": 0.02,
+      "avg_gross_bps": -0.11313779285193615,
+      "avg_net_bps": -11.113137792851939,
+      "active_dates": 120,
+      "daily_mean_bps": -0.1270072890611154,
+      "worst_day": -0.00013385614142025215,
+      "daily_5pct_quantile": -5.7565919717855736e-05,
+      "traded_notional_over_initial_equity": 4.792745274668862,
+      "ticker_pnl": {
+        "SPY": -266.3694920084071
+      },
+      "daily_mean_95pct_interval_bps": [
+        -0.16523970904041893,
+        -0.09023485265001932
+      ],
+      "incremental_daily_mean_95pct_interval_bps": [
+        0.06550790232945478,
+        0.13264982169536887
+      ]
+    },
+    "control": {
+      "final_equity": 99527.16911770315,
+      "total_return": -0.0047283088229684855,
+      "max_drawdown": -0.004730853958632129,
+      "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+      "n_taken": 210,
+      "n_skipped_concurrency": 0,
+      "n_skipped_daily_halt": 0,
+      "n_skipped_duplicate": 0,
+      "n_skipped_capital": 0,
+      "peak_gross_fraction": 0.02,
+      "avg_gross_bps": -0.28417717066944603,
+      "avg_net_bps": -11.28417717066945,
+      "active_dates": 210,
+      "daily_mean_bps": -0.22568354341332525,
+      "worst_day": -0.00013385614142036317,
+      "daily_5pct_quantile": -7.910759305251313e-05,
+      "traded_notional_over_initial_equity": 8.378950995949797,
+      "ticker_pnl": {
+        "SPY": -472.8308822968761
+      }
+    },
+    "cost_scenarios_bps": {
+      "0": {
+        "final_equity": 99997.27811432684,
+        "total_return": -2.7218856731625607e-05,
+        "max_drawdown": -0.0006600062828795089,
+        "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+        "n_taken": 120,
+        "n_skipped_concurrency": 0,
+        "n_skipped_daily_halt": 0,
+        "n_skipped_duplicate": 0,
+        "n_skipped_capital": 0,
+        "peak_gross_fraction": 0.02,
+        "avg_gross_bps": -0.11313779285193615,
+        "avg_net_bps": -0.11313779285193615,
+        "active_dates": 120,
+        "daily_mean_bps": -0.0012930033468784245,
+        "worst_day": -0.00011185614142028566,
+        "daily_5pct_quantile": -3.556591971790035e-05,
+        "traded_notional_over_initial_equity": 4.7990214081769045,
+        "ticker_pnl": {
+          "SPY": -2.7218856731655854
+        }
+      },
+      "2": {
+        "final_equity": 99949.29083181525,
+        "total_return": -0.0005070916818474824,
+        "max_drawdown": -0.0008958258042077347,
+        "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+        "n_taken": 120,
+        "n_skipped_concurrency": 0,
+        "n_skipped_daily_halt": 0,
+        "n_skipped_duplicate": 0,
+        "n_skipped_capital": 0,
+        "peak_gross_fraction": 0.02,
+        "avg_gross_bps": -0.11313779285193615,
+        "avg_net_bps": -2.113137792851936,
+        "active_dates": 120,
+        "daily_mean_bps": -0.024150146204001847,
+        "worst_day": -0.00011585614142028966,
+        "daily_5pct_quantile": -3.956591971795431e-05,
+        "traded_notional_over_initial_equity": 4.797879484995271,
+        "ticker_pnl": {
+          "SPY": -50.70916818477056
+        }
+      },
+      "5": {
+        "final_equity": 99877.35272331892,
+        "total_return": -0.00122647276681076,
+        "max_drawdown": -0.0014027519574449105,
+        "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+        "n_taken": 120,
+        "n_skipped_concurrency": 0,
+        "n_skipped_daily_halt": 0,
+        "n_skipped_duplicate": 0,
+        "n_skipped_capital": 0,
+        "peak_gross_fraction": 0.02,
+        "avg_gross_bps": -0.11313779285193615,
+        "avg_net_bps": -5.113137792851939,
+        "active_dates": 120,
+        "daily_mean_bps": -0.058435860489782145,
+        "worst_day": -0.00012185614142035117,
+        "daily_5pct_quantile": -4.5565919717965864e-05,
+        "traded_notional_over_initial_equity": 4.796167273791107,
+        "ticker_pnl": {
+          "SPY": -122.64727668100015
+        }
+      },
+      "11": {
+        "final_equity": 99733.63050799158,
+        "total_return": -0.0026636949200842253,
+        "max_drawdown": -0.00266624533543429,
+        "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+        "n_taken": 120,
+        "n_skipped_concurrency": 0,
+        "n_skipped_daily_halt": 0,
+        "n_skipped_duplicate": 0,
+        "n_skipped_capital": 0,
+        "peak_gross_fraction": 0.02,
+        "avg_gross_bps": -0.11313779285193615,
+        "avg_net_bps": -11.113137792851939,
+        "active_dates": 120,
+        "daily_mean_bps": -0.1270072890611154,
+        "worst_day": -0.00013385614142025215,
+        "daily_5pct_quantile": -5.7565919717855736e-05,
+        "traded_notional_over_initial_equity": 4.792745274668862,
+        "ticker_pnl": {
+          "SPY": -266.3694920084071
+        }
+      },
+      "20": {
+        "final_equity": 99518.4316444368,
+        "total_return": -0.004815683555632,
+        "max_drawdown": -0.004815683555631986,
+        "drawdown_basis": "realized equity; excludes unrealized intratrade losses",
+        "n_taken": 120,
+        "n_skipped_concurrency": 0,
+        "n_skipped_daily_halt": 0,
+        "n_skipped_duplicate": 0,
+        "n_skipped_capital": 0,
+        "peak_gross_fraction": 0.02,
+        "avg_gross_bps": -0.11313779285193615,
+        "avg_net_bps": -20.113137792851944,
+        "active_dates": 120,
+        "daily_mean_bps": -0.22986443191827655,
+        "worst_day": -0.00015185614142021464,
+        "daily_5pct_quantile": -7.556591971787929e-05,
+        "traded_notional_over_initial_equity": 4.78761832782579,
+        "ticker_pnl": {
+          "SPY": -481.5683555632136
+        }
+      }
+    },
+    "decision": "fail",
+    "decision_basis": "Development-only signal triage; negative gross expectancy fails this implementation. Otherwise insufficient confirmatory evidence.",
+    "inference": "Five-session circular block bootstrap of full daily returns; descriptive and post-selection, not multiplicity-adjusted. No annualized Sharpe or promotion claim.",
+    "experiment_id": "H3-20261021T164608-2eec63",
+    "registration_sha256": "7e4b908c76d4c1e0ab0eaf50c38f108bcd36ddb228b44d8e671aae1c74c6938d",
+    "limitations": [
+      "static surviving-name allowlist",
+      "synthetic historical availability",
+      "no observed quotes/impact",
+      "scheduled close proxy, not auction fills",
+      "no corporate-action event feed; prior raw-price scale may be affected",
+      "realized drawdown excludes intraday unrealized losses",
+      "Reconstructed historical bars: decision availability is hypothetical, retrieval provenance is recorded; exploratory only"
+    ],
+    "coverage": {
+      "SPY": {
+        "bars": 45581,
+        "first_bar": "2025-07-22 08:00:00+00:00",
+        "last_bar": "2026-07-08 19:55:00+00:00",
+        "evaluation_dates_present": 210
+      }
+    },
+    "status": "completed_development_only",
+    "reconstruction": {
+      "directory": "data\\edge_research\\reconstruction-20261021",
+      "manifest_sha256": "1fadc46cba048d3ecc10940ee077eac77f080a8534b65a6fffde7fcbf6f52fa3",
+      "policy": {
+        "version": "reconstruction-strict-v1",
+        "purpose": "exploratory historical reconstruction only; never confirmation or live input",
+        "merge": "add only audited absent timestamps; preserve every original bar",
+        "availability": "record retrieval time separately; bar-end+5s is an explicit hypothetical decision assumption, not observed availability",
+        "missing": "no imputation, no removed sessions or trades; any unresolved evaluation bar blocks performance",
+        "execution": "unchanged strategy, stop and cost rules; unknown intrabar stop paths cannot be bounded from adjacent candles"
+      }
+    }
+  },
+  "h1_run": {
+    "status": "blocked_by_data",
+    "error": "Incomplete evaluation coverage: COST 2025-09-12; audit data before performance",
+    "registration_sha256": "1dfb2e802c5dbdcfb581a533409e49bad980c69f707462c341a9ebd162450bb9"
+  }
+}

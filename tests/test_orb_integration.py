@@ -18,7 +18,14 @@ DAY = dt.date(2024, 3, 18)
 def _session(day, rows):
     idx, data = [], []
     for hh, mm, o, h, lo, c, v in rows:
-        idx.append(pd.Timestamp(day.year, day.month, day.day, hh, mm, tz=ET))
+        stamp = pd.Timestamp(day.year, day.month, day.day, hh, mm, tz=ET)
+        # Fixtures include a waiting bar before the first eligible 09:55 fill.
+        if (hh, mm) == (9, 50):
+            idx.append(stamp)
+            data.append({"open": o, "high": h, "low": lo, "close": c, "volume": v})
+        if (hh, mm) >= (9, 50):
+            stamp += pd.Timedelta(minutes=5)
+        idx.append(stamp)
         data.append({"open": o, "high": h, "low": lo, "close": c, "volume": v})
     return pd.DataFrame(data, index=pd.DatetimeIndex(idx))
 

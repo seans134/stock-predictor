@@ -1,0 +1,317 @@
+{
+  "audit_date": "2026-10-20",
+  "experiments": [
+    {
+      "file": "20260707T214409Z_backtest-smoke.json",
+      "variant": "default",
+      "n_trades": 4,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -24.870663993973153,
+      "avg_net_bps": -35.87066399397315
+    },
+    {
+      "file": "20260707T215522Z_after-cost-backtest-34.json",
+      "variant": "default",
+      "n_trades": 94,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -1.3887359421790877,
+      "avg_net_bps": -12.388735942179089
+    },
+    {
+      "file": "20260707T221553Z_downstream-value-ablation.json",
+      "variant": "all",
+      "n_trades": 442,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 1.452082450144543,
+      "avg_net_bps": -9.547917549855459
+    },
+    {
+      "file": "20260707T221553Z_downstream-value-ablation.json",
+      "variant": "cand",
+      "n_trades": 94,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -1.3887359421790877,
+      "avg_net_bps": -12.388735942179089
+    },
+    {
+      "file": "20260708T183313Z_ablation-wide-universe.json",
+      "variant": "all",
+      "n_trades": 5572,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -0.7266833500537867,
+      "avg_net_bps": -11.726683350053788
+    },
+    {
+      "file": "20260708T183313Z_ablation-wide-universe.json",
+      "variant": "cand",
+      "n_trades": 206,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -0.5859781197062329,
+      "avg_net_bps": -11.585978119706235
+    },
+    {
+      "file": "20260708T222318Z_ablation-with-news.json",
+      "variant": "all",
+      "n_trades": 5393,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -0.5545269217342167,
+      "avg_net_bps": -11.554526921734217
+    },
+    {
+      "file": "20260708T222318Z_ablation-with-news.json",
+      "variant": "cand",
+      "n_trades": 208,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -1.5403791538447764,
+      "avg_net_bps": -12.540379153844778
+    },
+    {
+      "file": "20260709T003058Z_ablation-news-gated.json",
+      "variant": "all",
+      "n_trades": 425,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -1.972499102422566,
+      "avg_net_bps": -12.972499102422566
+    },
+    {
+      "file": "20260709T003058Z_ablation-news-gated.json",
+      "variant": "cand",
+      "n_trades": 46,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -4.185891498100514,
+      "avg_net_bps": -15.185891498100519
+    },
+    {
+      "file": "20260709T015206Z_ablation-sentiment-aligned.json",
+      "variant": "all",
+      "n_trades": 119,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 2.3669481639841097,
+      "avg_net_bps": -8.633051836015891
+    },
+    {
+      "file": "20260709T015206Z_ablation-sentiment-aligned.json",
+      "variant": "cand",
+      "n_trades": 9,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 29.725651372912054,
+      "avg_net_bps": 18.725651372912054
+    },
+    {
+      "file": "20260709T040900Z_ablation-events-sentiment-aligned.json",
+      "variant": "all",
+      "n_trades": 119,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 2.3669481639841097,
+      "avg_net_bps": -8.633051836015891
+    },
+    {
+      "file": "20260709T040900Z_ablation-events-sentiment-aligned.json",
+      "variant": "cand",
+      "n_trades": 7,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 23.17188495772604,
+      "avg_net_bps": 12.171884957726038
+    },
+    {
+      "file": "20260709T232458Z_backtest-portfolio-v1.json",
+      "variant": "default",
+      "n_trades": 206,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -0.5859781197062329,
+      "avg_net_bps": -11.585978119706235
+    },
+    {
+      "file": "20260710T024159Z_backtest-portfolio-v1-trades.json",
+      "variant": "default",
+      "n_trades": 206,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": -0.5859781197062329,
+      "avg_net_bps": -11.585978119706235
+    },
+    {
+      "file": "20260710T041748Z_backtest-morning-window.json",
+      "variant": "default",
+      "n_trades": 86,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 7.331417845269058,
+      "avg_net_bps": -3.6685821547309447
+    },
+    {
+      "file": "20260710T223852Z_backtest-cost-aware-morning.json",
+      "variant": "default",
+      "n_trades": 92,
+      "test_start": "2025-09-05",
+      "test_end": "2026-04-07",
+      "avg_gross_bps": 2.0996363197822965,
+      "avg_net_bps": -8.900363680217705
+    },
+    {
+      "file": "20260927T205217Z_orb-smoke.json",
+      "variant": "pure",
+      "n_trades": 303,
+      "test_start": "2024-11-26",
+      "test_end": "2025-02-28",
+      "avg_gross_bps": 0.3893911189765789,
+      "avg_net_bps": -10.610608881023422
+    },
+    {
+      "file": "20260927T205217Z_orb-smoke.json",
+      "variant": "gated",
+      "n_trades": 19,
+      "test_start": "2024-11-26",
+      "test_end": "2025-02-28",
+      "avg_gross_bps": 1.7759764253669268,
+      "avg_net_bps": -9.224023574633074
+    },
+    {
+      "file": "20260927T231405Z_orb-full.json",
+      "variant": "pure",
+      "n_trades": 48333,
+      "test_start": "2025-09-05",
+      "test_end": "2026-07-08",
+      "avg_gross_bps": -1.0509052943195705,
+      "avg_net_bps": -12.050905294319572
+    },
+    {
+      "file": "20260927T231405Z_orb-full.json",
+      "variant": "gated",
+      "n_trades": 7179,
+      "test_start": "2025-09-05",
+      "test_end": "2026-07-08",
+      "avg_gross_bps": -1.9340601147233294,
+      "avg_net_bps": -12.934060114723332
+    },
+    {
+      "file": "20260928T013822Z_pairs-smoke.json",
+      "variant": "default",
+      "n_trades": 53,
+      "test_start": "2025-07-09",
+      "test_end": "2026-07-09",
+      "avg_gross_bps": 9.14517915748497,
+      "avg_net_bps": -12.854820842515032
+    }
+  ],
+  "blotters": {
+    "orb-full_pure": {
+      "trades": 48333,
+      "active_dates": 209,
+      "gross_bps": -1.0509052943195532,
+      "net_bps": -12.050905294319534,
+      "gross_95pct_block_bootstrap_interval_bps": [
+        -1.5969052637631982,
+        -0.49275820414580596
+      ],
+      "interval_warning": "Descriptive, conditional on selected strategy; no multiple-testing correction. Blocks cover active dates only, not a portfolio return series.",
+      "net_bps_at_round_trip_cost": {
+        "0": -1.0509052943195532,
+        "2": -3.050905294319553,
+        "5": -6.050905294319553,
+        "11": -12.050905294319554,
+        "20": -21.050905294319552
+      },
+      "direction_gross_bps": {
+        "long": -1.1081653909794933,
+        "short": -0.9903671338983286
+      }
+    },
+    "orb-full_gated": {
+      "trades": 7179,
+      "active_dates": 202,
+      "gross_bps": -1.9340601147233036,
+      "net_bps": -12.934060114723302,
+      "gross_95pct_block_bootstrap_interval_bps": [
+        -3.3090161770188926,
+        -0.6490065175617903
+      ],
+      "interval_warning": "Descriptive, conditional on selected strategy; no multiple-testing correction. Blocks cover active dates only, not a portfolio return series.",
+      "net_bps_at_round_trip_cost": {
+        "0": -1.9340601147233036,
+        "2": -3.9340601147233034,
+        "5": -6.934060114723303,
+        "11": -12.934060114723303,
+        "20": -21.934060114723305
+      },
+      "direction_gross_bps": {
+        "long": -2.5666394278379396,
+        "short": -1.2808843630446283
+      }
+    },
+    "backtest-morning-window": {
+      "trades": 86,
+      "active_dates": 36,
+      "gross_bps": 7.33141784526894,
+      "net_bps": -3.668582154730991,
+      "gross_95pct_block_bootstrap_interval_bps": [
+        -5.70061164655916,
+        21.009042207743487
+      ],
+      "interval_warning": "Descriptive, conditional on selected strategy; no multiple-testing correction. Blocks cover active dates only, not a portfolio return series.",
+      "net_bps_at_round_trip_cost": {
+        "0": 7.33141784526894,
+        "2": 5.33141784526894,
+        "5": 2.3314178452689402,
+        "11": -3.6685821547310598,
+        "20": -12.668582154731059
+      },
+      "direction_gross_bps": {
+        "long": 5.418834592329247,
+        "short": 7.768579731655158
+      }
+    },
+    "backtest-cost-aware-morning": {
+      "trades": 92,
+      "active_dates": 43,
+      "gross_bps": 2.099636319782313,
+      "net_bps": -8.90036368021765,
+      "gross_95pct_block_bootstrap_interval_bps": [
+        -9.498480489002702,
+        14.915548084256251
+      ],
+      "interval_warning": "Descriptive, conditional on selected strategy; no multiple-testing correction. Blocks cover active dates only, not a portfolio return series.",
+      "net_bps_at_round_trip_cost": {
+        "0": 2.099636319782313,
+        "2": 0.09963631978231291,
+        "5": -2.900363680217687,
+        "11": -8.900363680217687,
+        "20": -17.900363680217687
+      },
+      "direction_gross_bps": {
+        "long": 6.561318405366441,
+        "short": -0.5158324890083859
+      }
+    }
+  },
+  "news_metadata": {
+    "articles": 125649,
+    "min_assumed_delay_seconds": 900,
+    "max_assumed_delay_seconds": 900,
+    "scope": "Metadata only; no news-conditioned return analysis."
+  },
+  "synthetic_stop_gap": {
+    "entry": 103.0,
+    "stop": 101.0,
+    "next_bar_open": 98,
+    "next_bar_high": 100,
+    "simulator_exit": 105.0,
+    "simulator_reason": "target",
+    "finding": "Simulator misses gap-through stop; real stop execution would depend on available liquidity after trigger."
+  }
+}

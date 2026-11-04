@@ -6,9 +6,9 @@ session, plus the previous session's close for the overnight gap). The
 target looks strictly forward and follows the plan's timing rules:
 
     prediction time  = close of bar t (available at bar end + latency)
-    entry reference  = OPEN of bar t+1  (never the close we predicted from)
-    exit reference   = CLOSE of bar t+3 (15 minutes after entry bar start)
-    target           = log(exit / entry)
+    entry reference  = OPEN of bar t+2 (after bar completion + latency)
+    exit reference   = CLOSE of bar t+4 (15 minutes after entry bar start)
+    target           = exit / entry - 1 (arithmetic return for portfolio P&L)
 
 Everything is a return, ratio, or time-of-day value — raw price levels and
 ticker identity are not features. Missing values stay NaN (LightGBM treats
@@ -26,6 +26,7 @@ import pandas as pd
 
 from stockpredictor.news.features import STAGE2_NEWS_FEATURES, NewsFeatureBuilder
 from stockpredictor.sessions import ET, SessionCalendar
+from stockpredictor.execution.timing import BAR_DURATION, decision_time, entry_time, exit_time
 
 EPS = 1e-12
 
@@ -52,7 +53,7 @@ _PRICE_FEATURES = [
 # News features are NaN when no news store is supplied (unknown, not zero).
 FEATURE_COLUMNS = _PRICE_FEATURES + STAGE2_NEWS_FEATURES
 
-META_COLUMNS = ["ticker", "date", "bar_start"]
+META_COLUMNS = ["ticker", "date", "bar_start", "decision_ts", "entry_ts", "exit_ts"]
 TARGET_COLUMN = "fwd_ret_15m"
 
 # Bars needed before the first usable feature row of a session.
@@ -118,13 +119,17 @@ def _session_features(bars: pd.DataFrame, calendar: "SessionCalendar") -> pd.Dat
 
 
 def _forward_target(df: pd.DataFrame) -> pd.Series:
-    """15-min forward log return, entry at next bar open, exit at close
-    three bars ahead. NaN when the horizon crosses the session end."""
-    day = df.index.date
-    grouped = df.groupby(day, group_keys=False)
-    entry = grouped["open"].apply(lambda o: o.shift(-1))
-    exit_ = grouped["close"].apply(lambda c: c.shift(-3))
-    return np.log(exit_ / entry)
+    """Exact-clock arithmetic target; missing bars never compress the horizon."""
+    idx = df.index
+    entries = entry_time(idx)
+    final_bars = exit_time(idx) - BAR_DURATION
+    entry = df["open"].reindex(entries).to_numpy()
+    exit_ = df["close"].reindex(final_bars).to_numpy()
+    valid = (entries.date == idx.date) & (final_bars.date == idx.date)
+    for offset in range(1, 5):
+        valid &= (idx + offset * BAR_DURATION).isin(idx)
+    valid &= np.isfinite(entry) & np.isfinite(exit_) & (entry > 0) & (exit_ > 0)
+    return pd.Series(np.where(valid, exit_ / entry - 1.0, np.nan), index=idx)
 
 
 def build_features(
@@ -175,6 +180,9 @@ def build_features(
         df["ticker"] = ticker
         df["date"] = df.index.date
         df["bar_start"] = df.index
+        df["decision_ts"] = decision_time(df.index)
+        df["entry_ts"] = entry_time(df.index)
+        df["exit_ts"] = exit_time(df.index)
         frames.append(df.reset_index(drop=True)[META_COLUMNS + FEATURE_COLUMNS + [TARGET_COLUMN]])
 
     if not frames:
