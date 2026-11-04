@@ -136,12 +136,12 @@ def _sim_rows(times_and_decisions, fwd=0.005):
 
 def test_simulator_blocks_overlapping_signals():
     frame = _sim_rows(
-        [("10:00", LONG), ("10:05", LONG), ("10:10", LONG), ("10:15", LONG)]
+        [("10:00", LONG), ("10:05", LONG), ("10:10", LONG), ("10:15", LONG), ("10:20", LONG)]
     )
     trades = simulate(frame, CostModel())
-    # 10:00 trade occupies through 10:15 exit; 10:05/10:10 skipped, 10:15 allowed.
+    # Decision 10:05:05, entry 10:10, exit 10:25; next available signal at 10:25:05.
     assert len(trades) == 2
-    assert [ts.strftime("%H:%M") for ts in trades["bar_start"]] == ["10:00", "10:15"]
+    assert [ts.strftime("%H:%M") for ts in trades["bar_start"]] == ["10:00", "10:20"]
 
 
 def test_simulator_pnl_arithmetic():

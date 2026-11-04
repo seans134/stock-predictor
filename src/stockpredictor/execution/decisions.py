@@ -34,7 +34,7 @@ class DecisionConfig:
     min_edge_bps: float = 5.0        # required edge beyond round-trip cost
     max_risk_bps: float = 100.0      # worst acceptable q10 (q90 for shorts)
     trend_oppose_bps: float = 30.0   # 30-min move against the trade that vetoes it
-    min_minutes_to_close: float = 20.0  # entry+horizon must fit in the session
+    min_minutes_to_close: float = 25.0  # delayed entry + 15-minute holding period
     # Fresh-news gate: require at least this many articles in the last 2h
     # before trading. 0 disables the gate. Rows with unknown news (NaN,
     # no news store) never pass an active gate — missing data never trades.

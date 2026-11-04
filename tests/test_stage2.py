@@ -35,12 +35,12 @@ def test_target_matches_hand_computation(cal):
     features = build_features({"AAA": bars}, cal)
 
     t = 5  # arbitrary bar with full forward horizon
-    expected = np.log(bars.iloc[t + 3]["close"] / bars.iloc[t + 1]["open"])
+    expected = bars.iloc[t + 4]["close"] / bars.iloc[t + 2]["open"] - 1
     assert features.iloc[t][TARGET_COLUMN] == pytest.approx(expected)
 
-    # Horizon crosses the session end: last three bars have no target.
-    assert features[TARGET_COLUMN].tail(3).isna().all()
-    assert features[TARGET_COLUMN].iloc[:-3].notna().all()
+    # Horizon crosses the session end: last four bars have no target.
+    assert features[TARGET_COLUMN].tail(4).isna().all()
+    assert features[TARGET_COLUMN].iloc[:-4].notna().all()
 
 
 def test_no_lookahead_truncating_future_preserves_features(cal):
@@ -66,7 +66,7 @@ def test_no_cross_day_leakage(cal):
     for day in (dt.date(2024, 3, 18), dt.date(2024, 3, 19), dt.date(2024, 3, 20)):
         first_bar = features.loc[features["date"] == day].iloc[0]
         assert np.isnan(first_bar["r5"])  # no return across the overnight gap
-        last_bars = features.loc[features["date"] == day].tail(3)
+        last_bars = features.loc[features["date"] == day].tail(4)
         assert last_bars[TARGET_COLUMN].isna().all()  # target never crosses days
 
     # Overnight gap: NaN on the first stored day, defined afterwards.

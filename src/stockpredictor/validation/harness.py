@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 from stockpredictor.validation.folds import Fold
+from stockpredictor.execution.timing import EXECUTION_VERSION
 
 DEFAULT_EXPERIMENT_DIR = Path("data") / "experiments"
 
@@ -38,6 +39,7 @@ def run_walkforward(
 
     record = {
         "experiment": experiment_name,
+        "execution_version": EXECUTION_VERSION,
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "config": _jsonable(config_record),
         "n_folds": len(folds),

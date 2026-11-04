@@ -617,6 +617,7 @@ def cmd_backtest(args: argparse.Namespace) -> int:
         sim_frame = s2_test.copy()
         sim_frame["decision"] = decide(s2_test, preds, costs, decision_config)
         sim_frame["q10"] = preds["q10"]
+        sim_frame["q90"] = preds["q90"]
         trades = simulate(sim_frame, costs)
         all_trades.append(trades)
         metrics = summarize(trades, len(s2_test), len(test_days))

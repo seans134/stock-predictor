@@ -1,4 +1,4 @@
-"""Event-driven ORB backtest: signal -> next-bar-open fill -> stop/target/EOD.
+"""Event-driven ORB backtest: available signal -> later opening -> stop/target/EOD.
 
 Emits trades in the portfolio schema so the existing risk engine can replay
 them. Conservative fill: a bar spanning both stop and target resolves as a
@@ -13,12 +13,13 @@ import pandas as pd
 
 from stockpredictor.execution.costs import CostModel
 from stockpredictor.execution.decisions import LONG, SHORT
+from stockpredictor.execution.timing import BAR_DURATION, barrier_exit, decision_time, entry_time
 from stockpredictor.orb.strategy import ORBConfig, find_orb_signal, prior_session_atr, stop_and_target
 from stockpredictor.sessions import ET
 
 ORB_TRADE_COLUMNS = [
     "ticker", "date", "bar_start", "direction",
-    "gross_ret", "net_ret", "q10", "entry_ts", "exit_ts",
+    "gross_ret", "net_ret", "q10", "entry_ts", "exit_ts", "decision_ts",
 ]
 
 
@@ -50,36 +51,33 @@ def simulate_orb_session(
     sig = find_orb_signal(session, atr, cfg)
     if sig is None:
         return None
-    after = session.loc[session.index > sig.signal_bar]
-    if after.empty:
+    entry_bar = entry_time(sig.signal_bar)
+    if entry_bar not in session.index:
         return None
-    entry_bar = after.index[0]
-    entry = float(after.iloc[0]["open"])
+    entry = float(session.loc[entry_bar, "open"])
     if pd.isna(entry):
         return None
     stop, target, risk = stop_and_target(
         entry, sig.direction, sig.range_high, sig.range_low, atr, cfg
     )
-    if not (risk > 0):
+    if not (risk > 0) or sig.direction * (entry - stop) <= 0:
         return None
 
     forward = session.loc[session.index >= entry_bar]
     exit_px = exit_reason = exit_ts = None
     for ts, bar in forward.iterrows():
-        lo, hi = float(bar["low"]), float(bar["high"])
-        hit_stop = lo <= stop <= hi
-        hit_tgt = lo <= target <= hi
-        if hit_stop:                       # stop-first when both
-            exit_px, exit_reason, exit_ts = stop, "stop", ts
-            break
-        if hit_tgt:
-            exit_px, exit_reason, exit_ts = target, "target", ts
+        if bar[["open", "high", "low"]].isna().any():
+            raise ValueError("Missing OHLC during open ORB position; cannot price exit")
+        fill = barrier_exit(bar, sig.direction, stop, target)
+        if fill is not None:
+            exit_px, exit_reason, at_open = fill
+            exit_ts = ts if at_open else ts + BAR_DURATION
             break
     if exit_px is None:                    # EOD time-stop
         exit_px = float(forward.iloc[-1]["close"])
         if pd.isna(exit_px):
             return None
-        exit_reason, exit_ts = "time", forward.index[-1]
+        exit_reason, exit_ts = "time", forward.index[-1] + BAR_DURATION
 
     gross = sig.direction * (exit_px - entry) / entry
     net = gross - costs.round_trip_cost
@@ -128,5 +126,6 @@ def run_orb(
                 "q10": -trade.risk_frac_return,
                 "entry_ts": trade.entry_bar,
                 "exit_ts": trade.exit_ts,
+                "decision_ts": decision_time(trade.signal_bar),
             })
     return pd.DataFrame(rows, columns=ORB_TRADE_COLUMNS)

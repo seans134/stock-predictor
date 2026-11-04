@@ -17,7 +17,14 @@ PRIOR = dt.date(2024, 3, 15)
 def _session(day, rows):
     idx, data = [], []
     for hh, mm, o, h, lo, c, v in rows:
-        idx.append(pd.Timestamp(day.year, day.month, day.day, hh, mm, tz=ET))
+        stamp = pd.Timestamp(day.year, day.month, day.day, hh, mm, tz=ET)
+        # Fixtures include a waiting bar before the first eligible 09:55 fill.
+        if (hh, mm) == (9, 50):
+            idx.append(stamp)
+            data.append({"open": o, "high": h, "low": lo, "close": c, "volume": v})
+        if (hh, mm) >= (9, 50):
+            stamp += pd.Timedelta(minutes=5)
+        idx.append(stamp)
         data.append({"open": o, "high": h, "low": lo, "close": c, "volume": v})
     return pd.DataFrame(data, index=pd.DatetimeIndex(idx))
 
@@ -33,14 +40,14 @@ LONG_DAY_ROWS = [
 ]
 
 
-def test_entry_at_next_bar_open_and_target():
+def test_entry_after_processing_delay_and_target():
     session = _session(DAY, LONG_DAY_ROWS)
     # ATR=2, stop_atr_mult=1 -> entry 103, stop 101, risk 2, rr=1 -> target 105.
     trade = simulate_orb_session(session, atr=2.0, cfg=ORBConfig(rr=1.0), costs=CostModel(),
                                  ticker="AAA", day=DAY)
     assert trade is not None
     assert trade.entry == pytest.approx(103.0)          # 09:50 open
-    assert trade.entry_bar == pd.Timestamp(2024, 3, 18, 9, 50, tz=ET)
+    assert trade.entry_bar == pd.Timestamp(2024, 3, 18, 9, 55, tz=ET)
     assert trade.exit_reason == "target"
     assert trade.exit == pytest.approx(105.0)
     assert trade.gross_ret == pytest.approx((105.0 - 103.0) / 103.0)
@@ -75,7 +82,7 @@ def test_time_stop_at_eod():
                                  costs=CostModel(), ticker="AAA", day=DAY)
     assert trade.exit_reason == "time"
     assert trade.exit == pytest.approx(103.2)              # last bar close
-    assert trade.exit_ts == pd.Timestamp(2024, 3, 18, 9, 55, tz=ET)
+    assert trade.exit_ts == pd.Timestamp(2024, 3, 18, 10, 5, tz=ET)
 
 
 def test_short_pnl_sign():
@@ -147,7 +154,7 @@ def test_run_orb_schema_and_columns():
     assert row["ticker"] == "AAA"
     assert row["direction"] == LONG
     assert row["q10"] < 0                       # -risk_frac_return
-    assert row["entry_ts"] == pd.Timestamp(2024, 3, 18, 9, 50, tz=ET)
+    assert row["entry_ts"] == pd.Timestamp(2024, 3, 18, 9, 55, tz=ET)
 
 
 def test_run_orb_universe_filter_gates_names():
