@@ -1,5 +1,10 @@
 # Handoff — outstanding fixes & improvements
 
+> **Research paused November 4, 2026: no edge found on bar-only data.** ORB, Stage 2,
+> H3 and H1 all showed no positive gross return. The items below stay deferred
+> until research resumes. See the "Immediate work queue" in
+> `docs/EDGE_EXECUTION_PLAN.md` for what would justify resuming.
+
 _Last updated: 2026-11-04 (status, holdout, pairs and paid-quote notes below); the
 rest dates from 2026-09-28. For research sequencing, `docs/EDGE_EXECUTION_PLAN.md`
 takes precedence over this file. Covers the ORB (merged to `main`) and pairs/stat-arb

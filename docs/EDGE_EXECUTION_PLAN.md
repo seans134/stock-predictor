@@ -1,6 +1,6 @@
 **StockPredictor: finding and capturing an edge**
 
-Created October 20, 2026. Status: execution repairs and development research runner implemented; gates remain partially open. H3 failed its gross-return screen and [H1 failed its registered screen](research/2026-11-04-h1-results.md) on November 4, 2026. See [implementation evidence](research/2026-10-20-implementation-status.md). This is the active sequence for the next research phase. It supersedes the assumption that the generic 15-minute ML predictor should be the next component optimized; the broader architecture in PROJECT_PLAN.md remains background context.
+Created October 20, 2026. Status: **research paused November 4, 2026; no edge found on bar-only data.** Execution repairs and the development research runner are implemented; gates remain partially open. H3 failed its gross-return screen and [H1 failed its registered screen](research/2026-11-04-h1-results.md) on November 4, 2026. See [implementation evidence](research/2026-10-20-implementation-status.md). This is the active sequence for the next research phase. It supersedes the assumption that the generic 15-minute ML predictor should be the next component optimized; the broader architecture in PROJECT_PLAN.md remains background context.
 
 Research basis: [market-edge memo](research/2026-10-20-market-edge-research.md) and [saved-result audit](research/2026-10-20-audit.json).
 
@@ -89,7 +89,13 @@ Deliverable: a controlled, auditable deployment—or a documented decision to re
 
 **Immediate work queue**
 
-November 4 decision: [H1 failed](research/2026-11-04-h1-results.md) at -1.12 bp gross and -12.12 bp net per trade. Do not tune it or buy execution data for it. With H3 also failed, the next direction is an owner decision: H2 evidence collection, a registered pairs run, or recording that no edge was found. Queue items 1 and 2 below are closed by this result; the older entries are kept as history.
+**Decision, November 4, 2026: research is paused. No edge was found on bar-only data.** ORB, Stage 2, H3 and [H1](research/2026-11-04-h1-results.md) all showed no positive gross return. Only H1 and H3 went through the registered runner; ORB and Stage 2 are earlier walk-forward results. These are exploratory findings on exposed data, not proof that no edge exists. Do not tune these strategies or buy execution data for them. No work below is active; older entries are kept as history.
+
+Any of these would justify resuming, each with its own registration before results are seen:
+
+- **H2:** verified-event collection on an always-on host, aiming for enough verified guidance revisions to test.
+- **Pairs:** a registered full-universe run, counted as a fourth family. It has only had a 12-ticker smoke test.
+- **New hypotheses:** ideas that bring new information beyond the same price bars.
 
 Issuer-evidence foundation implemented: [store and bounded collection proof](research/2026-10-21-issuer-evidence-store.md). Two historical issuer sources archived across four observations; one draft event remains blocked by review/timing checks. Next is issuer-release discovery, structured guidance review, and a bounded prospective pilot—not H2 performance evaluation yet.
 
