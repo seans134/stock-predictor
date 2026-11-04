@@ -13,10 +13,11 @@ import pandas as pd
 
 from stockpredictor.execution.portfolio import RiskConfig
 from stockpredictor.research.baselines import (BaselineConfig, STOCKS, INSTRUMENT_TYPES,
-                                               opening_volume, closing_momentum, require_complete_evaluation)
+                                               gap_affected, gap_index, opening_volume, closing_momentum,
+                                               require_complete_evaluation)
 from stockpredictor.research.governance import (digest, fingerprint, inventory, register,
                                                require_development, verify_registration, write_new)
-from stockpredictor.research.reporting import compare
+from stockpredictor.research.reporting import compare, daily_portfolio, screen_decision
 from stockpredictor.sessions import default_calendar
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[3]
@@ -53,7 +54,36 @@ def load_development(db: Path, tickers, start, end, manifest):
     return loaded
 
 
-def prepare(root: Path, workspace: Path, start: str, end: str, families=("H1", "H3"), reconstruction=None):
+GAP_POLICY_VERSION = "h1-gap-v2"
+GAP_STRESS_NET_RETURN = -0.05
+
+
+def build_gap_policy(root: Path, tickers, reconstruction: Path, split_evidence: Path, gap_evidence) -> dict:
+    """Freeze the H1 gap, split, stress and decision rules before any run."""
+    recovery_manifest = json.loads((reconstruction / "manifest.json").read_text())
+    evidence = json.loads(split_evidence.read_text())
+    if not evidence.get("complete") or evidence.get("failures") or set(tickers) - set(evidence["tickers"]):
+        raise ValueError("Split evidence is incomplete for this universe")
+    return {
+        "version": GAP_POLICY_VERSION,
+        "gap_before_decision": "A missing bar cannot signal; the stock can still signal on later observed bars.",
+        "gap_while_holding": "Stay in the trade and evaluate the exit from the next observed bar's open.",
+        "history": "Lookback statistics for a gap session use its observed bars, with nothing imputed.",
+        "stress_net_return": GAP_STRESS_NET_RETURN,
+        "stress_scope": "Every primary trade holding through a registered gap; an assumption, not a true worst case. Control trades are not marked.",
+        "decision_rule": "Fail if mean daily net return at registered cost is <= 0 or <= the control's, in the base case or under stress. Otherwise pass_screen, which earns one validation run on locked dates and not trading.",
+        "split_rule": "A ticker is ineligible from a split's ex-date until its lookback contains only post-split sessions.",
+        "registered_gaps": recovery_manifest["unresolved"],
+        "split_ex_dates": {t: sorted(row["execution_date"] for row in evidence["splits"].get(t, []))
+                           for t in tickers if evidence["splits"].get(t)},
+        "split_evidence": {"path": split_evidence.resolve().relative_to(root.resolve()).as_posix(),
+                           "sha256": digest(split_evidence), "scope": evidence["scope"]},
+        "gap_evidence": {p.resolve().relative_to(root.resolve()).as_posix(): digest(p) for p in gap_evidence},
+    }
+
+
+def prepare(root: Path, workspace: Path, start: str, end: str, families=("H1", "H3"), reconstruction=None,
+            split_evidence=None, gap_evidence=()):
     manifest_path = workspace / "split_manifest.json"
     if not manifest_path.exists():
         manifest = inventory(root / "data/experiments")
@@ -117,6 +147,12 @@ def prepare(root: Path, workspace: Path, start: str, end: str, families=("H1", "
         if reconstruction_spec:
             spec["reconstruction"] = reconstruction_spec
             spec["limitations"].append("Reconstructed historical bars: decision availability is hypothetical, retrieval provenance is recorded; exploratory only")
+        if family == "H1" and split_evidence is not None:
+            if reconstruction is None:
+                raise ValueError("The H1 gap policy needs a sealed reconstruction")
+            spec["gap_policy"] = build_gap_policy(root, spec["tickers"], reconstruction, split_evidence, gap_evidence)
+            spec["limitations"].append("Registered gaps treated as no-print intervals; provider evidence is consistent with that but does not prove it")
+            spec["limitations"].append("Split evidence only; spin-offs and other corporate actions are not screened")
         register(workspace / "registry" / f"{identifier}.json", spec, manifest, root)
         print(identifier)
 
@@ -152,11 +188,19 @@ def run(root: Path, workspace: Path, identifier: str):
             for ticker, frame in data.items():
                 dates = frame.index.tz_convert("America/New_York").date
                 data[ticker] = frame[(dates >= warmup) & (dates <= end)]
-        require_complete_evaluation(data, calendar, days)
+        policy = spec.get("gap_policy")
+        gaps, splits = {}, {}
+        if policy:
+            if digest(root / policy["split_evidence"]["path"]) != policy["split_evidence"]["sha256"]:
+                raise ValueError("Split evidence changed since registration")
+            gaps = gap_index(policy["registered_gaps"])
+            splits = {t: [dt.date.fromisoformat(d) for d in dates] for t, dates in policy["split_ex_dates"].items()}
+        require_complete_evaluation(data, calendar, days, gaps)
         cfg = BaselineConfig(**spec["parameters"])
         if spec["family"] == "H1":
-            primary, selected = opening_volume(data, calendar, days, cfg)
-            control, control_selected = opening_volume(data, calendar, days, cfg, ordinary=True)
+            primary, selected = opening_volume(data, calendar, days, cfg, registered_gaps=gaps, split_dates=splits)
+            control, control_selected = opening_volume(data, calendar, days, cfg, ordinary=True,
+                                                       registered_gaps=gaps, split_dates=splits)
             selected.to_csv(output / "selections.csv", index=False)
             control_selected.to_csv(output / "control_selections.csv", index=False)
         else:
@@ -168,6 +212,17 @@ def run(root: Path, workspace: Path, identifier: str):
                              "last_bar": str(frame.index.max()),
                              "evaluation_dates_present": len(set(frame.index.tz_convert("America/New_York").date).intersection(days))}
                     for ticker, frame in data.items()}
+        if policy:
+            affected = gap_affected(primary, gaps)
+            stressed = primary.copy()
+            stressed.loc[affected, ["gross_ret", "net_ret"]] = policy["stress_net_return"]
+            _, stress, _ = daily_portfolio(stressed, days, RiskConfig(**spec["risk"]))
+            decision, basis = screen_decision(report["primary"]["daily_mean_bps"],
+                                              report["control"]["daily_mean_bps"], stress["daily_mean_bps"])
+            report.update(decision=decision, decision_basis=basis, gap_policy_version=policy["version"],
+                          stress={"daily_mean_bps": stress["daily_mean_bps"], "n_taken": stress["n_taken"],
+                                  "gap_affected_signals": int(affected.sum()),
+                                  "stress_net_return": policy["stress_net_return"]})
         report.update(experiment_id=identifier, registration_sha256=registration["registration_sha256"],
                       limitations=spec["limitations"], coverage=coverage,
                       status="completed_development_only")
@@ -197,13 +252,16 @@ def main(argv=None):
     p.add_argument("--end", required=True)
     p.add_argument("--family", choices=("H1", "H3"), default=None)
     p.add_argument("--reconstruction", type=Path, default=None)
+    p.add_argument("--split-evidence", type=Path, default=None, help="Registers the H1 gap policy")
+    p.add_argument("--gap-evidence", type=Path, nargs="*", default=())
     p = sub.add_parser("run")
     p.add_argument("identifier")
     args = parser.parse_args(argv)
     workspace = args.workspace or args.root / "data/edge_research"
     if args.command == "prepare":
         prepare(args.root, workspace, args.start, args.end,
-                (args.family,) if args.family else ("H1", "H3"), args.reconstruction)
+                (args.family,) if args.family else ("H1", "H3"), args.reconstruction,
+                args.split_evidence, args.gap_evidence)
     else:
         run(args.root, workspace, args.identifier)
 

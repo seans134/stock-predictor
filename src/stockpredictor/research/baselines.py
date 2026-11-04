@@ -72,24 +72,38 @@ def sessions(frame: pd.DataFrame, calendar):
     return groups
 
 
-def complete(bars, calendar, day):
+def gap_index(rows) -> dict:
+    """Registered gaps as {ticker: Eastern bar starts}; empty means strict coverage."""
+    gaps = {}
+    for row in rows:
+        gaps.setdefault(row["ticker"], []).append(row["event_ts"])
+    return {ticker: pd.DatetimeIndex(pd.to_datetime(sorted(values), unit="s", utc=True)).tz_convert(ET)
+            for ticker, values in gaps.items()}
+
+
+def complete(bars, calendar, day, allowed=None):
+    """Exact grid match. A registered gap must really be absent, or this fails."""
     expected = pd.date_range(calendar.session_open(day),
                              pd.Timestamp(calendar.session_close(day)) - BAR_DURATION,
                              freq=BAR_DURATION)
+    if allowed is not None and len(allowed):
+        expected = expected[~expected.isin(allowed)]
     return bars.index.equals(expected)
 
 
-def require_complete_evaluation(data, calendar, days):
+def require_complete_evaluation(data, calendar, days, registered_gaps=None):
     """Fail before measuring returns; missing sessions are not zero-trade days.
 
     This deliberately strict research gate also blocks genuine no-print gaps
-    until a separate, source-supported handling policy is registered.
+    until a separate, source-supported handling policy is registered. Only the
+    exact bars in such a policy are excused; any other gap still blocks.
     """
+    registered_gaps = registered_gaps or {}
     for ticker, frame in data.items():
         grouped = sessions(frame, calendar)
         for day in days:
             bars = grouped.get(day)
-            if bars is None or not complete(bars, calendar, day):
+            if bars is None or not complete(bars, calendar, day, registered_gaps.get(ticker)):
                 raise ValueError(f"Incomplete evaluation coverage: {ticker} {day}; audit data before performance")
 
 
@@ -101,12 +115,30 @@ def trade_row(ticker, day, signal, entry, exit_ts, entry_px, exit_px, risk, reas
                 entry_price=entry_px, exit_price=exit_px, exit_reason=reason, rvol=rvol)
 
 
-def opening_volume(bars_by_ticker, calendar, eval_days, cfg=BaselineConfig(), ordinary=False):
+def gap_affected(trades, registered_gaps) -> pd.Series:
+    """True where a registered gap falls inside the trade's holding period."""
+    affected = pd.Series(False, index=trades.index)
+    for ticker, gaps in (registered_gaps or {}).items():
+        for gap in gaps:
+            affected |= (trades.ticker == ticker) & (trades.entry_ts <= gap) & (gap < trades.exit_ts)
+    return affected
+
+
+def opening_volume(bars_by_ticker, calendar, eval_days, cfg=BaselineConfig(), ordinary=False,
+                   registered_gaps=None, split_dates=None):
     """H1 + registered ordinary-activity control; missing future bars fail run.
 
     Selection reads only history and the opening bar. If a selected trade has
     incomplete future data, raise rather than silently deleting its outcome.
+
+    Optional registered_gaps excuse exact no-print bars. History for those
+    sessions uses the observed bars, a missing bar cannot signal, and a held
+    position is next evaluated at the following observed bar. Optional
+    split_dates make a ticker ineligible on an ex-date and until its lookback
+    holds only post-split sessions, because raw volume and range are not
+    comparable across a split.
     """
+    registered_gaps, split_dates = registered_gaps or {}, split_dates or {}
     grouped, stats = {}, {}
     for ticker, frame in bars_by_ticker.items():
         if INSTRUMENT_TYPES.get(ticker) != "US_COMMON_STOCK":
@@ -117,7 +149,7 @@ def opening_volume(bars_by_ticker, calendar, eval_days, cfg=BaselineConfig(), or
         all_days = calendar.sessions_between(min(grouped[ticker]), max(grouped[ticker])) if grouped[ticker] else []
         for day in all_days:
             bars = grouped[ticker].get(day)
-            if bars is None or not complete(bars, calendar, day):
+            if bars is None or not complete(bars, calendar, day, registered_gaps.get(ticker)):
                 rows.append(dict(day=day, volume=np.nan, dollar=np.nan, opening_volume=np.nan, tr=np.nan))
                 previous_close = None
                 continue
@@ -125,11 +157,15 @@ def opening_volume(bars_by_ticker, calendar, eval_days, cfg=BaselineConfig(), or
             tr = high-low if previous_close is None else max(high-low, abs(high-previous_close), abs(low-previous_close))
             rows.append(dict(day=day, volume=bars.volume.sum(),
                              dollar=(bars.close * bars.volume).sum(),
-                             opening_volume=bars.volume.iloc[0], tr=tr))
+                             opening_volume=bars.volume.get(pd.Timestamp(calendar.session_open(day)), np.nan),
+                             tr=tr))
             previous_close = bars.close.iloc[-1]
         if rows:
             panel = pd.DataFrame(rows).set_index("day")
             stats[ticker] = panel.shift(1).rolling(cfg.lookback, min_periods=cfg.lookback).mean()
+            for ex_date in split_dates.get(ticker, ()):
+                first_after = sum(session < ex_date for session in panel.index)
+                stats[ticker].iloc[first_after:first_after + cfg.lookback] = np.nan
     trades, selections = [], []
     for day in eval_days:
         candidates = []
@@ -166,9 +202,11 @@ def opening_volume(bars_by_ticker, calendar, eval_days, cfg=BaselineConfig(), or
             signal = signals.index[0]
             entry = entry_time(signal)
             expected_prefix = pd.date_range(opening, entry, freq=BAR_DURATION)
-            if not expected_prefix.isin(bars.index).all():
+            excused = registered_gaps.get(ticker)
+            absent = expected_prefix[~expected_prefix.isin(bars.index)]
+            if entry in absent or (len(absent) and (excused is None or not absent.isin(excused).all())):
                 raise ValueError(f"Missing bars before scheduled H1 entry: {ticker} {day}")
-            if not complete(bars, calendar, day):
+            if not complete(bars, calendar, day, excused):
                 raise ValueError(f"Incomplete selected session; cannot silently discard outcome: {ticker} {day}")
             px = float(bars.loc[entry, "open"])
             risk = cfg.stop_daily_atr * atr

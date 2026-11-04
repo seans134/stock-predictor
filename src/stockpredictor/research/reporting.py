@@ -40,6 +40,15 @@ def block_interval(values, block=5, repetitions=5000):
     return (np.quantile(values[indices].mean(axis=1), [.025, .975])*1e4).tolist()
 
 
+def screen_decision(primary_daily_bps, control_daily_bps, stressed_daily_bps):
+    """Frozen H1 gap-policy rule: must beat zero and the control, also under stress."""
+    if primary_daily_bps <= 0 or primary_daily_bps <= control_daily_bps:
+        return "fail", "Daily net return at registered costs is not above both zero and the control."
+    if stressed_daily_bps <= 0 or stressed_daily_bps <= control_daily_bps:
+        return "fail", "The result does not survive the registered stress on gap-affected trades."
+    return "pass_screen", "Beats zero and the control, also under stress. Earns one validation run, not trading."
+
+
 def compare(primary, control, days, risk, cost_grid=(0, 2, 5, 11, 20)):
     daily, metrics, accepted = daily_portfolio(primary, days, risk)
     benchmark, bm, bm_accepted = daily_portfolio(control, days, risk)
